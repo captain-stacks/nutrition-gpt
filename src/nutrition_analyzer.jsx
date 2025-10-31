@@ -152,9 +152,6 @@ export default function NutritionAnalyzerApp() {
             {['name','ounces',...Object.keys(UNITS).filter(k => k !== 'ounces')].map(k => (
               <th key={k} className="p-2 capitalize">{k} {UNITS[k] ? `(${UNITS[k]})` : ''}</th>
             ))}
-            {Object.keys(UNITS).filter(k => k !== 'ounces').map(k => (
-              <th key={k+'pct'} className="p-2">% RDA</th>
-            ))}
           </tr>
         </thead>
         <tbody>
@@ -166,9 +163,6 @@ export default function NutritionAnalyzerApp() {
               </td>
               {Object.keys(UNITS).filter(k => k !== 'ounces').map(k => (
                 <td key={k} className="p-2">{((f[k]||0)*f.grams/100*multiplier).toFixed(2)}</td>
-              ))}
-              {Object.keys(UNITS).filter(k => k !== 'ounces').map(k => (
-                <td key={k+'pct'} className="p-2">{pctRDA(k)}%</td>
               ))}
             </tr>
           ))}
