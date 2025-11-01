@@ -20,9 +20,62 @@ const FOOD_DATABASE = {
   "Brazil Nuts": { calories: 186, protein: 4.1, fat: 19, carbs: 3.5, omega3: 0.03, omega6: 7.9, zinc: 1.2, b12: 0, magnesium: 107, vitaminE: 0.3, vitaminK: 0, vitaminA: 0, monounsaturated: 7, selenium: 544, iron: 2.4, vitaminD: 0, b1: 0.06, choline: 17, calcium: 45, potassium: 187, iodine: 0, vitaminC: 0, folate: 22 },
   "Soybeans": { calories: 446, protein: 36.5, fat: 19.9, carbs: 30.2, omega3: 0.7, omega6: 10.0, zinc: 4.9, b12: 0, magnesium: 280, vitaminE: 0.85, vitaminK: 47, vitaminA: 0, monounsaturated: 4.4, selenium: 17.8, iron: 15.7, vitaminD: 0, b1: 0.87, choline: 115, calcium: 277, potassium: 1797, iodine: 0, vitaminC: 6.0, folate: 375 },
   "Banana": { calories: 89, protein: 1.1, fat: 0.3, carbs: 22.8, omega3: 0.03, omega6: 0.07, zinc: 0.15, b12: 0, magnesium: 27, vitaminE: 0.1, vitaminK: 0.5, vitaminA: 3, monounsaturated: 0.03, selenium: 1, iron: 0.26, vitaminD: 0, b1: 0.03, choline: 9, calcium: 5, potassium: 358, iodine: 0, vitaminC: 8.7, folate: 20 },
+  "Oats": { calories: 389, protein: 16.9, fat: 6.9, carbs: 66.3, omega3: 0.11, omega6: 2.4, zinc: 3.97, b12: 0, magnesium: 177, vitaminE: 0.42, vitaminK: 2, vitaminA: 0, monounsaturated: 2.18, selenium: 34, iron: 4.7, vitaminD: 0, b1: 0.76, choline: 40, calcium: 54, potassium: 429, iodine: 0, vitaminC: 0, folate: 56 },
 };
 
 const G_TO_OZ = 0.03527396;
+
+const RDA_MEN = {
+  calories: 2500,
+  protein: 56,
+  fat: 70,
+  carbs: 300,
+  omega3: 1.6,
+  omega6: 17,
+  zinc: 11,
+  b12: 2.4,
+  magnesium: 420,
+  vitaminE: 15,
+  vitaminK: 120,
+  vitaminA: 900,
+  monounsaturated: 0, 
+  selenium: 55,
+  iron: 8,
+  vitaminD: 15,
+  b1: 1.2,
+  choline: 550,
+  calcium: 1000,
+  potassium: 3400,
+  iodine: 150,
+  vitaminC: 90,
+  folate: 400
+};
+
+const RDA_WOMEN = {
+  calories: 2000,
+  protein: 46,
+  fat: 70,
+  carbs: 260,
+  omega3: 1.1,
+  omega6: 12,
+  zinc: 8,
+  b12: 2.4,
+  magnesium: 320,
+  vitaminE: 15,
+  vitaminK: 90,
+  vitaminA: 700,
+  monounsaturated: 0,
+  selenium: 55,
+  iron: 18,
+  vitaminD: 15,
+  b1: 1.1,
+  choline: 425,
+  calcium: 1000,
+  potassium: 2600,
+  iodine: 150,
+  vitaminC: 75,
+  folate: 400
+};
 
 export default function NutritionAnalyzerApp() {
   const loadFoods = () => {
@@ -51,16 +104,15 @@ export default function NutritionAnalyzerApp() {
 
   const [foods, setFoods] = useState(loadFoods);
   const [currentSelection, setCurrentSelection] = useState({ name: "Lentils", ounces: "" });
-  const [multiplier, setMultiplier] = useState(loadMultiplier);
+  const [multiplier, setMultiplier] = useState(() => parseFloat(localStorage.getItem('multiplier')) || 1);
+  const [rdaGender, setRdaGender] = useState('men');
 
-  useEffect(() => {
-    const toStore = foods.map(f => ({ name: f.name, ounces: f.grams * G_TO_OZ }));
-    localStorage.setItem('foods', JSON.stringify(toStore));
-  }, [foods]);
+  useEffect(() => { localStorage.setItem('foods', JSON.stringify(foods.map(f => ({ name: f.name, ounces: f.grams*G_TO_OZ })))); }, [foods]);
+  useEffect(() => { localStorage.setItem('multiplier', multiplier); }, [multiplier]);
 
-  useEffect(() => {
-    localStorage.setItem('multiplier', multiplier);
-  }, [multiplier]);
+  function handleChange(e) { setCurrentSelection({ ...currentSelection, [e.target.name]: e.target.value }); }
+  function addFood() { if (!currentSelection.name || !currentSelection.ounces) return; const foodData = FOOD_DATABASE[currentSelection.name]; setFoods([...foods, { ...foodData, name: currentSelection.name, grams: parseFloat(currentSelection.ounces)/G_TO_OZ, id: Math.random().toString(36).slice(2) }]); setCurrentSelection({ ...currentSelection, ounces: '' }); }
+  function updateFoodQuantity(id, ounces) { setFoods(foods.map(f => f.id === id ? { ...f, grams: parseFloat(ounces)/G_TO_OZ } : f)); }
 
   const UNITS = {
     calories: "kcal",
@@ -85,31 +137,6 @@ export default function NutritionAnalyzerApp() {
     potassium: "mg",
     iodine: "µg",
     vitaminC: "mg"
-  };
-
-  const RDA = {
-    calories: 2000,
-    protein: 50,
-    fat: 70,
-    carbs: 310,
-    omega3: 1.6,
-    omega6: 17,
-    zinc: 11,
-    b12: 2.4,
-    magnesium: 400,
-    vitaminE: 15,
-    vitaminK: 120,
-    vitaminA: 900,
-    monounsaturated: 20,
-    selenium: 55,
-    iron: 8,
-    vitaminD: 20,
-    b1: 1.2,
-    choline: 550,
-    calcium: 1000,
-    potassium: 4700,
-    iodine: 150,
-    vitaminC: 90
   };
 
   function handleChange(e) {
@@ -141,16 +168,17 @@ export default function NutritionAnalyzerApp() {
   }
 
   const totals = calculateTotals();
-
-  function pctRDA(key) {
-    if (!RDA[key]) return null;
-    return ((totals[key] / RDA[key]) * 100).toFixed(1);
-  }
+  const RDA = rdaGender === 'men' ? RDA_MEN : RDA_WOMEN;
+  function pctRDA(key) { if (!RDA[key]) return null; return ((totals[key]/RDA[key])*100).toFixed(1); }
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
       <h1 className="text-2xl font-bold mb-4">Nutrition Analyzer</h1>
       <div className="flex gap-2 mb-4">
+        <select value={rdaGender} onChange={e => setRdaGender(e.target.value)} className="border p-2 rounded">
+          <option value="men">Men</option>
+          <option value="women">Women</option>
+        </select>
         <select name="name" value={currentSelection.name} onChange={handleChange} className="border p-2 rounded">
           {Object.keys(FOOD_DATABASE).map(f => <option key={f} value={f}>{f}</option>)}
         </select>
