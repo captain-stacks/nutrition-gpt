@@ -21,83 +21,78 @@ ChartJS.register(
   annotationPlugin
 );
 
-const FOOD_DATABASE = {
-  "Lentils": { calories: 33, protein: 2.6, fat: 0.1, carbs: 5.7, omega3: 0.03, omega6: 0.17, zinc: 0.7, b12: 0, magnesium: 18, vitaminE: 0.05, vitaminK: 0, vitaminA: 0, monounsaturated: 0, selenium: 2, iron: 1.3, vitaminD: 0, b1: 0.1, choline: 12, calcium: 19, potassium: 180, iodine: 0, vitaminC: 1.5, folate: 45 },
-  "Potato": { calories: 22, protein: 0.6, fat: 0.03, carbs: 4.8, omega3: 0.003, omega6: 0.01, zinc: 0.1, b12: 0, magnesium: 5, vitaminE: 0.01, vitaminK: 1, vitaminA: 2, monounsaturated: 0, selenium: 0.3, iron: 0.2, vitaminD: 0, b1: 0.03, choline: 2, calcium: 5, potassium: 120, iodine: 0, vitaminC: 5, folate: 6 },
-  "Carrot": { calories: 12, protein: 0.27, fat: 0.06, carbs: 2.8, omega3: 0.008, omega6: 0.017, zinc: 0.1, b12: 0, magnesium: 4, vitaminE: 0.06, vitaminK: 8, vitaminA: 835, monounsaturated: 0, selenium: 0.2, iron: 0.2, vitaminD: 0, b1: 0.02, choline: 8, calcium: 16, potassium: 170, iodine: 0, vitaminC: 3, folate: 19 },
-  "Broccoli": { calories: 9.5, protein: 0.8, fat: 0.11, carbs: 1.96, omega3: 0.02, omega6: 0.014, zinc: 0.16, b12: 0, magnesium: 10, vitaminE: 0.08, vitaminK: 101, vitaminA: 31, monounsaturated: 0, selenium: 0.7, iron: 0.3, vitaminD: 0, b1: 0.04, choline: 6, calcium: 21, potassium: 140, iodine: 0, vitaminC: 31, folate: 63 },
-  "Hemp Hearts": { calories: 161, protein: 8.8, fat: 13.7, carbs: 2.4, omega3: 2.2, omega6: 7.3, zinc: 3.0, b12: 0, magnesium: 197, vitaminE: 0.3, vitaminK: 0, vitaminA: 0, monounsaturated: 2.0, selenium: 2.2, iron: 2.4, vitaminD: 0, b1: 0.3, choline: 20, calcium: 21, potassium: 360, iodine: 0, vitaminC: 0.5, folate: 100 },
-  "Nutritional Yeast": { calories: 92, protein: 14, fat: 1.4, carbs: 10, omega3: 0.06, omega6: 0.24, zinc: 1.6, b12: 0, magnesium: 40, vitaminE: 0.5, vitaminK: 0, vitaminA: 0, monounsaturated: 0.5, selenium: 12, iron: 2.5, vitaminD: 0, b1: 0.1, choline: 20, calcium: 20, potassium: 100, iodine: 0, vitaminC: 0, folate: 240 },
-  "Eggs": { calories: 72, protein: 6.3, fat: 4.8, carbs: 0.4, omega3: 0.05, omega6: 0.6, zinc: 0.6, b12: 0.4, magnesium: 6, vitaminE: 0.5, vitaminK: 0, vitaminA: 90, monounsaturated: 2, selenium: 15, iron: 0.9, vitaminD: 1, b1: 0.03, choline: 147, calcium: 28, potassium: 69, iodine: 24, vitaminC: 0, folate: 24 },
-  "Cod Liver Oil": { calories: 257, protein: 0, fat: 28.5, carbs: 0, omega3: 8.6, omega6: 0.14, zinc: 0, b12: 1.5, magnesium: 0, vitaminE: 2, vitaminK: 0, vitaminA: 1500, monounsaturated: 10, selenium: 0, iron: 0, vitaminD: 10, b1: 0, choline: 0, calcium: 0, potassium: 0, iodine: 0, vitaminC: 0, folate: 0 },
-  "Almonds": { calories: 164, protein: 6.1, fat: 14, carbs: 6.1, omega3: 0.001, omega6: 3.4, zinc: 1.0, b12: 0, magnesium: 76, vitaminE: 7.3, vitaminK: 0, vitaminA: 0, monounsaturated: 9, selenium: 0.5, iron: 1.0, vitaminD: 0, b1: 0.2, choline: 15, calcium: 76, potassium: 200, iodine: 0, vitaminC: 0, folate: 60 },
-  "Chicken": { calories: 68, protein: 7.7, fat: 3.9, carbs: 0, omega3: 0.028, omega6: 0.33, zinc: 0.9, b12: 0.3, magnesium: 12, vitaminE: 0.3, vitaminK: 0, vitaminA: 13, monounsaturated: 1.2, selenium: 13, iron: 0.4, vitaminD: 0, b1: 0.07, choline: 25, calcium: 5, potassium: 200, iodine: 0, vitaminC: 0, folate: 5 },
-  "Milk": { calories: 12, protein: 1, fat: 0.3, carbs: 1.4, omega3: 0.008, omega6: 0.005, zinc: 0.1, b12: 0.1, magnesium: 5, vitaminE: 0.05, vitaminK: 0, vitaminA: 40, monounsaturated: 0.1, selenium: 1, iron: 0, vitaminD: 1, b1: 0.01, choline: 4, calcium: 30, potassium: 55, iodine: 20, vitaminC: 0, folate: 5 },
-  "Apple": { calories: 15, protein: 0.09, fat: 0.06, carbs: 3.9, omega3: 0.003, omega6: 0.005, zinc: 0.04, b12: 0, magnesium: 3, vitaminE: 0.1, vitaminK: 2, vitaminA: 3, monounsaturated: 0, selenium: 0, iron: 0.1, vitaminD: 0, b1: 0.02, choline: 3, calcium: 4, potassium: 105, iodine: 0, vitaminC: 5, folate: 3 },
-  "Sweet Potato": { calories: 24, protein: 0.45, fat: 0.03, carbs: 5, omega3: 0.008, omega6: 0.027, zinc: 0.12, b12: 0, magnesium: 7, vitaminE: 0.03, vitaminK: 1.8, vitaminA: 192, monounsaturated: 0, selenium: 0.3, iron: 0.3, vitaminD: 0, b1: 0.03, choline: 3, calcium: 13, potassium: 180, iodine: 0, vitaminC: 2, folate: 11 },
-  "Cream": { calories: 97, protein: 0.57, fat: 10.5, carbs: 0.85, omega3: 0.005, omega6: 0.054, zinc: 0.1, b12: 0.1, magnesium: 2, vitaminE: 0.1, vitaminK: 0, vitaminA: 85, monounsaturated: 5, selenium: 1, iron: 0, vitaminD: 1, b1: 0.01, choline: 2, calcium: 7, potassium: 20, iodine: 10, vitaminC: 0, folate: 3 },
-  "Whey Protein": { calories: 32, protein: 6.4, fat: 0.56, carbs: 0.64, omega3: 0.008, omega6: 0.016, zinc: 0.5, b12: 0.3, magnesium: 10, vitaminE: 0.05, vitaminK: 0, vitaminA: 10, monounsaturated: 0.1, selenium: 5, iron: 0.1, vitaminD: 0, b1: 0.01, choline: 5, calcium: 20, potassium: 60, iodine: 0, vitaminC: 0, folate: 4 },
-  "Olive Oil": { 
-  calories: 120, 
-  protein: 0, 
-  fat: 14, 
-  carbs: 0, 
-  omega3: 0.002, 
-  omega6: 1.9, 
-  zinc: 0, 
-  b12: 0, 
-  magnesium: 0, 
-  vitaminE: 1.9, 
-  vitaminK: 8, 
-  vitaminA: 0, 
-  monounsaturated: 10, 
-  selenium: 0, 
-  iron: 0, 
-  vitaminD: 0, 
-  b1: 0, 
-  choline: 0, 
-  calcium: 0, 
-  potassium: 0, 
-  iodine: 0, 
-  vitaminC: 0, 
-  folate: 0 
-},
-"Cauliflower": {
-  calories: 7,
-  protein: 0.55,
-  fat: 0.03,
-  carbs: 1.4,
-  omega3: 0.002,
-  omega6: 0.002,
-  zinc: 0.06,
-  b12: 0,
-  magnesium: 3,
-  vitaminE: 0.02,
-  vitaminK: 3.5,
-  vitaminA: 1,
-  monounsaturated: 0,
-  selenium: 0.2,
-  iron: 0.07,
-  vitaminD: 0,
-  b1: 0.01,
-  choline: 8,
-  calcium: 3,
-  potassium: 70,
-  iodine: 0,
-  vitaminC: 12,
-  folate: 11
-},
-  "Cashews": { calories: 157, protein: 5.1, fat: 12.3, carbs: 8.4, omega3: 0.014, omega6: 1.1, zinc: 1.6, b12: 0, magnesium: 82, vitaminE: 0.3, vitaminK: 0, vitaminA: 0, monounsaturated: 2.2, selenium: 3, iron: 1.9, vitaminD: 0, b1: 0.1, choline: 10, calcium: 10, potassium: 187, iodine: 0, vitaminC: 0.5, folate: 25 },
-  "Brazil Nuts": { calories: 186, protein: 3.9, fat: 18, carbs: 3.3, omega3: 0.014, omega6: 5.6, zinc: 0.8, b12: 0, magnesium: 107, vitaminE: 0.3, vitaminK: 0, vitaminA: 0, monounsaturated: 7, selenium: 544, iron: 0.9, vitaminD: 0, b1: 0.06, choline: 8, calcium: 15, potassium: 187, iodine: 0, vitaminC: 0, folate: 22 },
-  "Soybeans": { calories: 126, protein: 10.2, fat: 5.7, carbs: 8.5, omega3: 0.26, omega6: 2.0, zinc: 1.0, b12: 0, magnesium: 45, vitaminE: 0.85, vitaminK: 15, vitaminA: 0, monounsaturated: 1.2, selenium: 4.8, iron: 2.0, vitaminD: 0, b1: 0.15, choline: 50, calcium: 25, potassium: 180, iodine: 0, vitaminC: 6, folate: 80 },
-  "Banana": { calories: 25, protein: 0.31, fat: 0.08, carbs: 5.8, omega3: 0.008, omega6: 0.019, zinc: 0.04, b12: 0, magnesium: 8, vitaminE: 0.1, vitaminK: 0.6, vitaminA: 3, monounsaturated: 0.02, selenium: 0.1, iron: 0.1, vitaminD: 0, b1: 0.03, choline: 3, calcium: 5, potassium: 115, iodine: 0, vitaminC: 8, folate: 20 },
-  "Oats": { calories: 110, protein: 4.8, fat: 2, carbs: 18.5, omega3: 0.028, omega6: 1.12, zinc: 2.3, b12: 0, magnesium: 130, vitaminE: 0.5, vitaminK: 0, vitaminA: 0, monounsaturated: 0.6, selenium: 28, iron: 1.7, vitaminD: 0, b1: 0.2, choline: 10, calcium: 54, potassium: 240, iodine: 0, vitaminC: 0, folate: 38 },
-  "Powdered Peanut Butter": { calories: 131, protein: 5, fat: 1.5, carbs: 4, omega3: 0.02, omega6: 1.2, zinc: 0.6, b12: 0, magnesium: 45, vitaminE: 0, vitaminK: 0, vitaminA: 0, monounsaturated: 0.8, selenium: 2, iron: 0.8, vitaminD: 0, b1: 0.05, choline: 8, calcium: 15, potassium: 150, iodine: 0, vitaminC: 0, folate: 27 },
-  "Ice Cream": { calories: 840, protein: 13, fat: 58, carbs: 74, omega3: 0.05, omega6: 1.8, zinc: 1, b12: 0.4, magnesium: 70, vitaminE: 1, vitaminK: 4, vitaminA: 500, monounsaturated: 18, selenium: 5, iron: 0.2, vitaminD: 0.4, b1: 0.1, choline: 70, calcium: 350, potassium: 550, iodine: 25, vitaminC: 2, folate: 18 },
-  "Salmon": { calories: 59, protein: 6, fat: 3.8, carbs: 0, omega3: 0.4, omega6: 0.04, zinc: 0.1, b12: 0.9, magnesium: 8, vitaminE: 0.5, vitaminK: 0, vitaminA: 50, monounsaturated: 1.5, selenium: 9, iron: 0.1, vitaminD: 3.5, b1: 0.04, choline: 25, calcium: 5, potassium: 150, iodine: 9, vitaminC: 0, folate: 7 },
+
+const NUTRIENT_NAME_MAP = {
+  "Energy": "calories",
+  "Protein": "protein",
+  "Total lipid (fat)": "fat",
+  "Carbohydrate, by difference": "carbs",
+  "Fatty acids, total omega-3": "omega3",
+  "Fatty acids, total omega-6": "omega6",
+  "Zinc, Zn": "zinc",
+  "Vitamin B-12": "b12",
+  "Magnesium, Mg": "magnesium",
+  "Vitamin E (alpha-tocopherol)": "vitaminE",
+  "Vitamin K (phylloquinone)": "vitaminK",
+  "Vitamin A, RAE": "vitaminA",
+  "Fatty acids, total monounsaturated": "monounsaturated",
+  "Selenium, Se": "selenium",
+  "Iron, Fe": "iron",
+  "Vitamin D (D2 + D3)": "vitaminD",
+  "Thiamin": "b1",
+  "Choline, total": "choline",
+  "Calcium, Ca": "calcium",
+  "Potassium, K": "potassium",
+  "Iodine, I": "iodine",
+  "Vitamin C, total ascorbic acid": "vitaminC",
+  "Folate, total": "folate"
 };
 
+function convertToTargetUnit(amount, fromUnit, targetUnit, nutrientKey) {
+  if (amount === undefined || amount === null) return 0;
+  if (!fromUnit || !targetUnit) return amount;
+  const from = fromUnit.toString().toLowerCase();
+  const to = targetUnit.toString().toLowerCase();
+  if (from === to) return amount;
+
+  if (from === "g" && to === "mg") return amount * 1000;
+  if (from === "g" && to === "µg") return amount * 1_000_000;
+  if (from === "mg" && to === "g") return amount / 1000;
+  if (from === "mg" && to === "µg") return amount * 1000;
+  if ((from === "µg" || from === "mcg") && to === "mg") return amount / 1000;
+  if ((from === "µg" || from === "mcg") && to === "g") return amount / 1_000_000;
+  if (from === "kj" && to === "kcal") return amount / 4.184;
+  if (from === "iu" && to === "µg" && nutrientKey === "vitaminD") return amount * 0.025;
+  return amount;
+}
+
 const G_TO_OZ = 0.03527396;
+const OZ_TO_G = 28.3495;
+const CUP_TO_G = 240; // Approximate for most foods
+const TBSP_TO_G = 15;
+const TSP_TO_G = 5;
+const LB_TO_G = 453.592;
+
+const UNIT_OPTIONS = [
+  { value: 'g', label: 'Grams (g)' },
+  { value: 'oz', label: 'Ounces (oz)' },
+  { value: 'cup', label: 'Cups (c)' },
+  { value: 'tbsp', label: 'Tablespoons (tbsp)' },
+  { value: 'tsp', label: 'Teaspoons (tsp)' },
+  { value: 'lb', label: 'Pounds (lb)' }
+];
+
+function convertToGrams(value, unit) {
+  switch(unit) {
+    case 'g': return value;
+    case 'oz': return value * OZ_TO_G;
+    case 'cup': return value * CUP_TO_G;
+    case 'tbsp': return value * TBSP_TO_G;
+    case 'tsp': return value * TSP_TO_G;
+    case 'lb': return value * LB_TO_G;
+    default: return value;
+  }
+}
 
 const RDA_MEN = {
   calories: 2500,
@@ -153,23 +148,63 @@ const RDA_WOMEN = {
     omega3_6_ratio: 0.33
 };
 
+const UNITS = {
+  calories: "kcal",
+  protein: "g",
+  fat: "g",
+  carbs: "g",
+  omega3: "g",
+  omega6: "g",
+  zinc: "mg",
+  b12: "µg",
+  magnesium: "mg",
+  vitaminE: "mg",
+  vitaminK: "µg",
+  vitaminA: "µg RAE",
+  monounsaturated: "g",
+  selenium: "µg",
+  iron: "mg",
+  vitaminD: "µg",
+  b1: "mg",
+  choline: "mg",
+  calcium: "mg",
+  potassium: "mg",
+  iodine: "µg",
+  vitaminC: "mg",
+  folate: "µg",
+  omega3_6_ratio: ""
+};
+
+function createEmptyNutrientProfile() {
+  return Object.keys(UNITS).reduce((acc, key) => ({ ...acc, [key]: 0 }), {});
+}
+
 export default function NutritionAnalyzerApp() {
   const loadFoods = () => {
     const stored = localStorage.getItem('foods');
     if (stored) {
-      return JSON.parse(stored).map(f => ({
-        ...FOOD_DATABASE[f.name],
-        name: f.name,
-        grams: f.ounces / G_TO_OZ,
-        id: Math.random().toString(36).slice(2)
-      }));
+      const storedFoods = JSON.parse(stored);
+      const loadedDb = loadFoodDatabase();
+      return storedFoods.map(f => {
+        const foodData = loadedDb[f.name];
+        if (!foodData) {
+          // If food not in database, create empty profile
+          return {
+            ...createEmptyNutrientProfile(),
+            name: f.name,
+            grams: f.ounces / G_TO_OZ,
+            id: Math.random().toString(36).slice(2)
+          };
+        }
+        return {
+          ...foodData,
+          name: f.name,
+          grams: f.ounces / G_TO_OZ,
+          id: Math.random().toString(36).slice(2)
+        };
+      });
     }
-    return Object.keys(FOOD_DATABASE).map(name => ({
-      ...FOOD_DATABASE[name],
-      name,
-      grams: 5 / G_TO_OZ,
-      id: Math.random().toString(36).slice(2)
-    }));
+    return [];
   };
 
   const loadMultiplier = () => {
@@ -188,8 +223,17 @@ export default function NutritionAnalyzerApp() {
     return stored || 'men';
   };
 
+  const loadFoodDatabase = () => {
+    const stored = localStorage.getItem('foodDatabase');
+    return stored ? JSON.parse(stored) : {};
+  };
+
+  const [foodDatabase, setFoodDatabase] = useState(() => {
+    const loaded = loadFoodDatabase();
+    return loaded;
+  });
   const [foods, setFoods] = useState(loadFoods);
-  const [currentSelection, setCurrentSelection] = useState({ name: "Lentils", ounces: "" });
+  const [currentSelection, setCurrentSelection] = useState({ name: "", amount: "", unit: "g" });
   const [multiplier, setMultiplier] = useState(() => parseFloat(localStorage.getItem('multiplier')) || 1);
   const [rdaGender, setRdaGender] = useState(loadRdaGender);
   const [savedLists, setSavedLists] = useState(loadSavedLists);
@@ -200,37 +244,37 @@ export default function NutritionAnalyzerApp() {
     // Check if there's a saved current list name
     return localStorage.getItem('currentListName') || null;
   });
+  const [usdaApiKey, setUsdaApiKey] = useState(() => localStorage.getItem('usdaApiKey') || "");
+  const [usdaQuery, setUsdaQuery] = useState("berries");
+  const [isFetchingUSDA, setIsFetchingUSDA] = useState(false);
+  const [usdaStatus, setUsdaStatus] = useState("");
+  const [fetchedFoods, setFetchedFoods] = useState([]);
+  const [showFoodSelection, setShowFoodSelection] = useState(false);
 
   useEffect(() => { localStorage.setItem('foods', JSON.stringify(foods.map(f => ({ name: f.name, ounces: f.grams*G_TO_OZ })))); }, [foods]);
   useEffect(() => { localStorage.setItem('multiplier', multiplier); }, [multiplier]);
   useEffect(() => { localStorage.setItem('rdaGender', rdaGender); }, [rdaGender]);
+  useEffect(() => { localStorage.setItem('foodDatabase', JSON.stringify(foodDatabase)); }, [foodDatabase]);
+  useEffect(() => { localStorage.setItem('usdaApiKey', usdaApiKey); }, [usdaApiKey]);
+  useEffect(() => {
+    if (!currentSelection.name || !foodDatabase[currentSelection.name]) {
+      const firstFood = Object.keys(foodDatabase)[0];
+      if (firstFood) {
+        setCurrentSelection(prev => ({ ...prev, name: firstFood }));
+      }
+    }
+  }, [foodDatabase]);
 
-  const UNITS = {
-    calories: "kcal",
-    protein: "g",
-    fat: "g",
-    carbs: "g",
-    omega3: "g",
-    omega6: "g",
-    zinc: "mg",
-    b12: "µg",
-    magnesium: "mg",
-    vitaminE: "mg",
-    vitaminK: "µg",
-    vitaminA: "µg RAE",
-    monounsaturated: "g",
-    selenium: "µg",
-    iron: "mg",
-    vitaminD: "µg",
-    b1: "mg",
-    choline: "mg",
-    calcium: "mg",
-    potassium: "mg",
-    iodine: "µg",
-    vitaminC: "mg",
-    folate: "µg",
-    omega3_6_ratio: ""
-  };
+
+  function getTargetUnit(key) {
+    const unitLabel = UNITS[key];
+    if (!unitLabel) return null;
+    if (unitLabel.includes("µg")) return "µg";
+    if (unitLabel.includes("mg")) return "mg";
+    if (unitLabel.includes("kcal")) return "kcal";
+    if (unitLabel.includes("g")) return "g";
+    return unitLabel;
+  }
 
   function formatLabel(key) {
     if (key === 'omega3_6_ratio') return 'Omega 3:6 Ratio';
@@ -249,20 +293,20 @@ export default function NutritionAnalyzerApp() {
   }
 
   function addFood() {
-    if (!currentSelection.name || !currentSelection.ounces) return;
-    const ouncesValue = parseFloat(currentSelection.ounces);
-    if (isNaN(ouncesValue) || ouncesValue <= 0) {
-      alert("Please enter a valid positive number for ounces");
+    if (!currentSelection.name || !currentSelection.amount) return;
+    const amountValue = parseFloat(currentSelection.amount);
+    if (isNaN(amountValue) || amountValue <= 0) {
+      alert("Please enter a valid positive number");
       return;
     }
-    const foodData = FOOD_DATABASE[currentSelection.name];
+    const foodData = foodDatabase[currentSelection.name];
     if (!foodData) {
       alert("Food not found in database");
       return;
     }
-    const grams = ouncesValue / G_TO_OZ;
+    const grams = convertToGrams(amountValue, currentSelection.unit);
     setFoods([...foods, { ...foodData, name: currentSelection.name, grams, id: Math.random().toString(36).slice(2) }]);
-    setCurrentSelection({ ...currentSelection, ounces: "" });
+    setCurrentSelection({ ...currentSelection, amount: "" });
   }
 
   function updateFoodQuantity(id, ounces) {
@@ -292,6 +336,100 @@ export default function NutritionAnalyzerApp() {
     if (isNaN(ratioValue) || ratioValue <= 0) return 'N/A';
     const n = (1 / ratioValue).toFixed(1);
     return `1:${n}`;
+  }
+
+  const mapUsdaFoodsToDatabase = (usdaFoods, existingDb) => {
+    const mapped = {};
+    if (!Array.isArray(usdaFoods)) return mapped;
+    usdaFoods.forEach((food) => {
+      const rawName = (food.description || "").trim();
+      const baseName = rawName || `FDC ${food.fdcId}`;
+      let name = baseName;
+      let suffix = 2;
+      while (mapped[name] || existingDb[name]) {
+        name = `${baseName} (${suffix++})`;
+      }
+      const profile = {
+        ...createEmptyNutrientProfile(),
+        name,
+        grams: food.servingSizeUnit?.toLowerCase() === 'g' && food.servingSize ? food.servingSize : 100,
+        id: `usda-${food.fdcId}`
+      };
+      (food.foodNutrients || []).forEach((nutrient) => {
+        const key = NUTRIENT_NAME_MAP[nutrient.nutrientName];
+        if (!key) return;
+        const targetUnit = getTargetUnit(key);
+        const normalized = convertToTargetUnit(
+          nutrient.value ?? nutrient.amount ?? 0,
+          nutrient.unitName,
+          targetUnit,
+          key
+        );
+        if (!Number.isNaN(normalized)) {
+          profile[key] = normalized;
+        }
+      });
+      mapped[name] = profile;
+    });
+    return mapped;
+  };
+
+  async function fetchUsdaFoods(e) {
+    if (e) e.preventDefault();
+    if (!usdaApiKey) {
+      alert("Please enter your USDA API key (https://api.nal.usda.gov/).");
+      return;
+    }
+    setIsFetchingUSDA(true);
+    setUsdaStatus("Contacting USDA FoodData Central...");
+    try {
+      const response = await fetch(`https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${usdaApiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          generalSearchInput: usdaQuery || "berries",
+          pageSize: 50,
+          dataType: ["Survey (FNDDS)", "SR Legacy", "Foundation"]
+        })
+      });
+      if (!response.ok) {
+        throw new Error(`Request failed (${response.status})`);
+      }
+      const data = await response.json();
+      if (!data.foods || !data.foods.length) {
+        setUsdaStatus("No foods returned for that query.");
+        return;
+      }
+      // Store fetched foods for user selection
+      const mapped = mapUsdaFoodsToDatabase(data.foods, foodDatabase);
+      setFetchedFoods(Object.entries(mapped).map(([name, profile]) => ({
+        name,
+        profile,
+        description: data.foods.find(f => {
+          const foodName = (f.description || "").trim() || `FDC ${f.fdcId}`;
+          return foodName === name || foodName.startsWith(name.split(' (')[0]);
+        })?.description || name
+      })));
+      setUsdaStatus(`Found ${data.foods.length} foods. Please select one to add.`);
+      setShowFoodSelection(true);
+    } catch (error) {
+      setUsdaStatus(`USDA fetch failed: ${error.message}`);
+    } finally {
+      setIsFetchingUSDA(false);
+    }
+  }
+
+  function addSelectedFood(foodName) {
+    const selectedFood = fetchedFoods.find(f => f.name === foodName);
+    if (!selectedFood) return;
+    
+    setFoodDatabase((prev) => {
+      const updated = { ...prev, [foodName]: selectedFood.profile };
+      return updated;
+    });
+    setShowFoodSelection(false);
+    setFetchedFoods([]);
+    setUsdaStatus(`Added "${foodName}" to database.`);
   }
 
   function saveCurrentList(listName = null) {
@@ -335,12 +473,23 @@ export default function NutritionAnalyzerApp() {
     const listData = savedLists[listName];
     if (!listData) return;
     
-    const loadedFoods = listData.foods.map(f => ({
-      ...FOOD_DATABASE[f.name],
-      name: f.name,
-      grams: f.ounces / G_TO_OZ,
-      id: Math.random().toString(36).slice(2)
-    }));
+    const loadedFoods = listData.foods.map(f => {
+      const baseFood = foodDatabase[f.name];
+      if (!baseFood) {
+        return {
+          name: f.name,
+          grams: f.ounces / G_TO_OZ,
+          id: Math.random().toString(36).slice(2),
+          ...createEmptyNutrientProfile()
+        };
+      }
+      return {
+        ...baseFood,
+        name: f.name,
+        grams: f.ounces / G_TO_OZ,
+        id: Math.random().toString(36).slice(2)
+      };
+    });
     
     setFoods(loadedFoods);
     if (listData.multiplier) setMultiplier(listData.multiplier);
@@ -394,12 +543,23 @@ export default function NutritionAnalyzerApp() {
           return;
         }
         
-        const importedFoods = data.foods.map(f => ({
-          ...FOOD_DATABASE[f.name],
-          name: f.name,
-          grams: f.ounces / G_TO_OZ,
-          id: Math.random().toString(36).slice(2)
-        }));
+        const importedFoods = data.foods.map(f => {
+          const baseFood = foodDatabase[f.name];
+          if (!baseFood) {
+            return {
+              name: f.name,
+              grams: f.ounces / G_TO_OZ,
+              id: Math.random().toString(36).slice(2),
+              ...createEmptyNutrientProfile()
+            };
+          }
+          return {
+            ...baseFood,
+            name: f.name,
+            grams: f.ounces / G_TO_OZ,
+            id: Math.random().toString(36).slice(2)
+          };
+        });
         
         if (window.confirm("This will replace your current food list. Continue?")) {
           setFoods(importedFoods);
@@ -508,6 +668,87 @@ export default function NutritionAnalyzerApp() {
         </div>
       </div>
 
+      <div className="bg-white rounded-lg shadow-md p-4 mb-4">
+        <h2 className="text-lg font-semibold mb-2">USDA FoodData Central</h2>
+        <p className="text-sm text-gray-600 mb-3">
+          Fetch additional foods from the USDA National Agricultural Library API (
+          <a className="text-blue-600 underline" href="https://api.nal.usda.gov/" target="_blank" rel="noreferrer">
+            api.nal.usda.gov
+          </a>
+          ). Provide your API key and a search term to merge USDA results into this database.
+        </p>
+        <div className="flex flex-wrap gap-2 items-center">
+          <input
+            type="text"
+            value={usdaApiKey}
+            onChange={(e) => setUsdaApiKey(e.target.value)}
+            placeholder="USDA API Key"
+            className="border p-2 rounded flex-1 min-w-[180px] focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <input
+            type="text"
+            value={usdaQuery}
+            onChange={(e) => setUsdaQuery(e.target.value)}
+            placeholder="Search term (e.g., salmon)"
+            className="border p-2 rounded flex-1 min-w-[160px] focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <button
+            onClick={fetchUsdaFoods}
+            disabled={isFetchingUSDA}
+            className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded transition-colors disabled:opacity-70"
+          >
+            {isFetchingUSDA ? 'Fetching...' : 'Fetch Foods'}
+          </button>
+        </div>
+        {usdaStatus && <p className="text-xs text-gray-600 mt-2">{usdaStatus}</p>}
+      </div>
+
+      {/* Food Selection Dialog */}
+      {showFoodSelection && fetchedFoods.length > 0 && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+            <h2 className="text-xl font-bold mb-4">Select Food to Add</h2>
+            <p className="text-sm text-gray-600 mb-4">Found {fetchedFoods.length} foods. Select one to add to your database:</p>
+            <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+              {fetchedFoods.map((food) => (
+                <div 
+                  key={food.name} 
+                  className="border rounded p-3 hover:bg-gray-50 flex justify-between items-start"
+                >
+                  <div className="flex-1">
+                    <div className="font-semibold">{food.name}</div>
+                    <div className="text-sm text-gray-500 mt-1">{food.description}</div>
+                    <div className="text-xs text-gray-400 mt-1">
+                      Calories: {food.profile.calories?.toFixed(1) || 0} kcal • 
+                      Protein: {food.profile.protein?.toFixed(1) || 0}g • 
+                      Carbs: {food.profile.carbs?.toFixed(1) || 0}g
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => addSelectedFood(food.name)}
+                    className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded text-sm ml-4"
+                  >
+                    Add
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={() => {
+                  setShowFoodSelection(false);
+                  setFetchedFoods([]);
+                  setUsdaStatus("");
+                }}
+                className="bg-gray-300 hover:bg-gray-400 text-gray-800 px-4 py-2 rounded"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Save Dialog */}
       {showSaveDialog && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -611,19 +852,31 @@ export default function NutritionAnalyzerApp() {
             onChange={handleChange} 
             className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            {Object.keys(FOOD_DATABASE).sort().map(f => <option key={f} value={f}>{f}</option>)}
+            {Object.keys(foodDatabase).sort().map(f => <option key={f} value={f}>{f}</option>)}
           </select>
-          <input 
-            type="number" 
-            name="ounces" 
-            value={currentSelection.ounces} 
-            onChange={handleChange} 
-            placeholder="Ounces" 
-            step="0.1"
-            min="0"
-            className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" 
-            onKeyPress={(e) => e.key === 'Enter' && addFood()}
-          />
+          <div className="flex gap-2">
+            <input 
+              type="number" 
+              name="amount" 
+              value={currentSelection.amount} 
+              onChange={handleChange} 
+              placeholder="Amount" 
+              step="0.1"
+              min="0"
+              className="border p-2 rounded w-24 focus:outline-none focus:ring-2 focus:ring-blue-500" 
+              onKeyPress={(e) => e.key === 'Enter' && addFood()}
+            />
+            <select
+              name="unit"
+              value={currentSelection.unit}
+              onChange={handleChange}
+              className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {UNIT_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
           <button 
             onClick={addFood} 
             className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-blue-300"
