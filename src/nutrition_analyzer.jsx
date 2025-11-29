@@ -160,8 +160,50 @@ const UNIT_OPTIONS = [
   { value: 'tbsp', label: 'Tablespoons (tbsp)' },
   { value: 'tsp', label: 'Teaspoons (tsp)' },
   { value: 'lb', label: 'Pounds (lb)' },
-  { value: 'whole', label: 'One Whole' }
+  { value: 'whole', label: 'Whole' }
 ];
+
+// Common whole food weights (grams) - based on USDA FoodData Central, medium/average sizes
+const COMMON_WHOLE_FOOD_WEIGHTS = {
+  // Potatoes
+  'potato': 213, // Medium russet potato
+  'potatoes': 213,
+  'russet potato': 213,
+  'russet potatoes': 213,
+  'red potato': 213, // Medium red potato
+  'red potatoes': 213,
+  'white potato': 213, // Medium white potato
+  'white potatoes': 213,
+  'sweet potato': 130, // Medium sweet potato
+  'sweet potatoes': 130,
+  // Fruits
+  'apple': 182, // Medium apple
+  'apples': 182,
+  'banana': 118, // Medium banana
+  'bananas': 118,
+  'orange': 131, // Medium orange
+  'oranges': 131,
+  'peach': 150, // Medium peach
+  'peaches': 150,
+  'pear': 178, // Medium pear
+  'pears': 178,
+  // Eggs
+  'egg': 50, // Large egg
+  'eggs': 50,
+  // Vegetables
+  'tomato': 182, // Medium tomato
+  'tomatoes': 182,
+  'onion': 110, // Medium onion
+  'onions': 110,
+  'carrot': 61, // Medium carrot
+  'carrots': 61,
+  'cucumber': 301, // Medium cucumber
+  'cucumbers': 301,
+  'bell pepper': 186, // Medium bell pepper
+  'bell peppers': 186,
+  'avocado': 201, // Medium avocado
+  'avocados': 201
+};
 const DEFAULT_DISPLAY_UNIT = 'oz';
 
 function normalizeUnitName(unit = "g") {
@@ -294,28 +336,28 @@ const RDA_WOMEN = {
     omega3_6_ratio: 0.33
 };
 
-const UNITS = {
-  calories: "kcal",
-  protein: "g",
-  fat: "g",
-  carbs: "g",
-  omega3: "g",
-  omega6: "g",
-  zinc: "mg",
-  b12: "µg",
-  magnesium: "mg",
-  vitaminE: "mg",
-  vitaminK: "µg",
-  vitaminA: "µg RAE",
-  monounsaturated: "g",
-  selenium: "µg",
-  iron: "mg",
-  vitaminD: "µg",
-  b1: "mg",
-  choline: "mg",
-  calcium: "mg",
-  potassium: "mg",
-  iodine: "µg",
+  const UNITS = {
+    calories: "kcal",
+    protein: "g",
+    fat: "g",
+    carbs: "g",
+    omega3: "g",
+    omega6: "g",
+    zinc: "mg",
+    b12: "µg",
+    magnesium: "mg",
+    vitaminE: "mg",
+    vitaminK: "µg",
+    vitaminA: "µg RAE",
+    monounsaturated: "g",
+    selenium: "µg",
+    iron: "mg",
+    vitaminD: "µg",
+    b1: "mg",
+    choline: "mg",
+    calcium: "mg",
+    potassium: "mg",
+    iodine: "µg",
   vitaminC: "mg",
   folate: "µg",
   omega3_6_ratio: ""
@@ -676,7 +718,13 @@ export default function NutritionAnalyzerApp() {
   const [openAiApiKey, setOpenAiApiKey] = useState(() => localStorage.getItem('openAiApiKey') || "");
   const [nutritionInput, setNutritionInput] = useState("");
   const [isParsingFoods, setIsParsingFoods] = useState(false);
+  const [isLoadingList, setIsLoadingList] = useState(false);
+  const [loadingListProgress, setLoadingListProgress] = useState({ current: 0, total: 0 });
   const [parseError, setParseError] = useState("");
+  const [amountInputValues, setAmountInputValues] = useState({});
+  const [focusedAmountInput, setFocusedAmountInput] = useState(null);
+  const [textModeInputs, setTextModeInputs] = useState(new Set());
+  const [justSelectedInputs, setJustSelectedInputs] = useState(new Set());
   const [parsedFoodsPreview, setParsedFoodsPreview] = useState([]);
   const [parsedLinesPreview, setParsedLinesPreview] = useState([]);
   const [isPreviewStage, setIsPreviewStage] = useState(false);
@@ -766,7 +814,24 @@ export default function NutritionAnalyzerApp() {
     if (foods.length > 0) {
       setShowSplash(false);
     }
-  }, [foods.length]);
+  }, [foods]);
+  // Sync amount input values when foods change
+  useEffect(() => {
+    setAmountInputValues(prev => {
+      const newInputValues = {};
+      foods.forEach(f => {
+        const unit = foodUnits[f.id] || DEFAULT_DISPLAY_UNIT;
+        const overrideWeight = getStoredUnitWeight(f.name, unit);
+        const value = gramsToUnit(f.grams, unit, overrideWeight || undefined);
+        const formatted = Number.isFinite(value) ? value.toFixed(2) : "";
+        // Only update if we don't already have a value for this food (to preserve user input)
+        if (prev[f.id] === undefined) {
+          newInputValues[f.id] = formatted;
+        }
+      });
+      return Object.keys(newInputValues).length > 0 ? { ...prev, ...newInputValues } : prev;
+    });
+  }, [foods, foodUnits]);
 
   useEffect(() => {
     setFoodUnits((prev) => {
@@ -1179,10 +1244,11 @@ Please read the following text and convert it into structured foods with numeric
 Instructions:
 - Return JSON with a top-level "foods" array.
 - Each food needs { "name": string, "quantity": number, "unit": string }.
-- Acceptable units: g, gram, grams, oz, ounce, ounces, cup, cups, tbsp, tablespoon, tsp, teaspoon, lb, pound.
-- Normalize plural units to singular (e.g., "cups" -> "cup").
+- Acceptable units: g, gram, grams, oz, ounce, ounces, cup, cups, tbsp, tablespoon, tsp, teaspoon, lb, pound, whole, one whole.
+- Use "whole" or "one whole" for individual items like eggs, apples, bananas, oranges, etc. (e.g., "3 eggs" -> { "name": "eggs", "quantity": 3, "unit": "whole" }).
+- Normalize plural units to singular (e.g., "cups" -> "cup"), but keep "whole" as-is.
 - Quantities should be positive numbers. If a quantity is missing, infer a reasonable serving (e.g., 1 cup).
-- Example input line: "2 cups cooked lentils".
+- Example input lines: "2 cups cooked lentils", "3 eggs", "1 apple".
 
 Input:
 ${inputText.trim()}
@@ -1215,7 +1281,7 @@ ${inputText.trim()}
     const systemPrompt = `You are a nutrition data assistant.
 
 - Given a list of food names (comma-separated), output JSON only
-- For a single food, return: { "name": "food name", "serving_size": "amount unit", "per_serving": { "nutrientKey": "amount unit" } }
+- For a single food, return: { "name": "food name", "servingSize": { "weight": "number unit", "volume": "number unit" }, "perServing": { "nutrientKey": "amount unit" } }
 - For multiple foods, return an array: [{ "name": "food1", ... }, { "name": "food2", ... }]
 
 - Units: Prefer metric units (g, mg, µg, mcg, kcal) over IU when possible. You can use IU only if metric units are not available.
@@ -1258,16 +1324,33 @@ ${inputText.trim()}
       const originalItem = items[index] || items[0]; // Fallback to first item if index out of bounds
       const name = titleCase(result?.name || originalItem.name);
       
-      // Parse serving_size from API response
-      const servingSizeStr = result?.serving_size || result?.servingSize || result?.service_size || result?.serviceSize || "100 g";
+      // Parse servingSize from API response
+      // New format: servingSize is an object with weight and volume properties
+      // Old format: serving_size or servingSize as a string (for backward compatibility)
+      let servingSizeStr = "100 g";
+      if (result?.servingSize) {
+        if (typeof result.servingSize === 'object') {
+          // New format: { weight: "number unit", volume: "number unit" }
+          // Prefer weight over volume
+          servingSizeStr = result.servingSize.weight || result.servingSize.volume || "100 g";
+        } else {
+          // Old format: string
+          servingSizeStr = result.servingSize;
+        }
+      } else {
+        // Fallback to old format fields for backward compatibility
+        servingSizeStr = result?.serving_size || result?.service_size || result?.serviceSize || "100 g";
+      }
+      
       const servingSizeParsed = parseAmountAndUnit(servingSizeStr);
       const servingSizeAmount = servingSizeParsed?.amount || 100;
       const servingSizeUnit = servingSizeParsed?.unit || "g";
       
-      // Convert serving_size to grams for scaling calculations
+      // Convert servingSize to grams for scaling calculations
       const servingSizeInGrams = convertToGrams(servingSizeAmount, servingSizeUnit);
       
-      const perServing = result?.per_serving || result?.per_100g || result?.per_ounce || result?.nutrients || {};
+      // New format uses perServing (camelCase), old format uses per_serving (snake_case)
+      const perServing = result?.perServing || result?.per_serving || result?.per_100g || result?.per_ounce || result?.nutrients || {};
       const profile = createEmptyNutrientProfile();
       
       Object.keys(profile).forEach((key) => {
@@ -1310,11 +1393,17 @@ ${inputText.trim()}
         }
       });
       
-      // Store serving_size information with the profile
+      // Store servingSize information with the profile
+      // Also store the original volume field if present (for unit detection)
+      const originalVolume = result?.servingSize && typeof result.servingSize === 'object' 
+        ? result.servingSize.volume 
+        : null;
+      
       profile._servingSize = {
         amount: servingSizeAmount,
         unit: servingSizeUnit,
-        grams: servingSizeInGrams
+        grams: servingSizeInGrams,
+        volume: originalVolume // Store original volume for unit detection (e.g., "1 large egg")
       };
       
       return { name, nutrients: profile, originalItem };
@@ -1325,16 +1414,36 @@ ${inputText.trim()}
   };
 
   const fetchWholeUnitWeight = async (foodItem) => {
+    // First, check if we have a known weight for this food in our lookup table
+    const foodNameLower = (foodItem.name || "").toLowerCase().trim();
+    const knownWeight = COMMON_WHOLE_FOOD_WEIGHTS[foodNameLower];
+    
+    if (knownWeight) {
+      // Use the known weight from our lookup table (more reliable than API)
+      return knownWeight;
+    }
+    
+    // If not found in lookup table, use API to determine weight
     const descriptor = `${foodItem.quantity || 1} ${foodItem.unit || ""} ${foodItem.name}`.trim();
-    const systemPrompt = "You are NutritionGPT, a registered dietitian who provides precise ingredient weights.";
+    const systemPrompt = "You are NutritionGPT, a registered dietitian who provides precise ingredient weights based on USDA FoodData Central and standard culinary references.";
     const userPrompt = `
 Determine the average edible weight in grams for ONE whole "${foodItem.name}" as described.
 
 Requirements:
 - Respond with strictly JSON: { "grams_per_unit": number }.
 - grams_per_unit must be a positive number representing the mass of a single whole item.
-- Honor size descriptors (e.g., large, medium), preparation (peeled, cooked), and food type.
-- Use established references (USDA, standard culinary references) when possible.
+- Honor size descriptors (e.g., large, medium, small) if provided in the context.
+- If no size is specified, use MEDIUM/AVERAGE size based on USDA standards:
+  * Medium potato (russet): ~213g (7.5 oz)
+  * Medium potato (red): ~213g (7.5 oz)
+  * Medium potato (white): ~213g (7.5 oz)
+  * Medium sweet potato: ~130g (4.6 oz)
+  * Medium apple: ~182g (6.4 oz)
+  * Medium banana: ~118g (4.2 oz)
+  * Large egg: ~50g (1.76 oz)
+- For potatoes specifically: If no size specified, use medium russet potato weight (213g) as baseline.
+- Honor preparation state (peeled, cooked, raw) if mentioned.
+- Use USDA FoodData Central values when available, otherwise use standard culinary references.
 
 Context provided: ${descriptor}
 `;
@@ -1560,15 +1669,35 @@ Context provided: ${descriptor}
             id: foodId
           });
           
-          // Save the unit for this food (use the parsed unit from itemData)
-          if (data.unitKey) {
-            newFoodUnits[foodId] = data.unitKey;
-          } else if (data.item.unit) {
-            // Fallback to the unit from the parsed item
-            newFoodUnits[foodId] = normalizeUnitName(data.item.unit) || DEFAULT_DISPLAY_UNIT;
-          } else {
-            newFoodUnits[foodId] = DEFAULT_DISPLAY_UNIT;
+          // Save the unit for this food (preserve the parsed unit from input as closely as possible)
+          // Prefer the normalized unit from the original parsed item to maintain user's intent
+          let unitToUse = DEFAULT_DISPLAY_UNIT;
+          
+          // First, check if servingSize volume suggests "whole" (e.g., "1 large egg", "1 apple")
+          // This handles cases where API returns volume like "1 large egg" but we want "whole" as the unit
+          let volumeSuggestsWhole = false;
+          if (data.nutrientProfile?._servingSize) {
+            const servingSize = data.nutrientProfile._servingSize;
+            const volumeStr = servingSize.volume || "";
+            // If volume contains patterns like "1 egg", "1 apple", "1 banana", etc., use "whole"
+            if (volumeStr && /^1\s+(large|medium|small)?\s*(egg|eggs|apple|apples|banana|bananas|orange|oranges|peach|peaches|pear|pears|plum|plums|avocado|avocados|tomato|tomatoes|cucumber|cucumbers|pepper|peppers|onion|onions|potato|potatoes|carrot|carrots)/i.test(volumeStr)) {
+              volumeSuggestsWhole = true;
+            }
           }
+          
+          if (volumeSuggestsWhole) {
+            // If volume suggests "whole", use that (highest priority)
+            unitToUse = "whole";
+          } else if (data.item.unit) {
+            // Normalize the original parsed unit from user input
+            const normalizedOriginalUnit = normalizeUnitName(data.item.unit);
+            unitToUse = normalizedOriginalUnit;
+          } else if (data.unitKey) {
+            // Fallback to unitKey from resolveItemGrams
+            unitToUse = data.unitKey;
+          }
+          
+          newFoodUnits[foodId] = unitToUse;
         } catch (error) {
           console.error("Failed to import", data.item.name, error);
           if (!failedFoods.includes(titleCase(data.item.name))) {
@@ -1645,12 +1774,73 @@ Context provided: ${descriptor}
     }
   }
 
-  function loadList(listName) {
+  async function loadList(listName) {
     const listData = savedLists[listName];
     if (!listData) return;
     
+    // Close modal immediately
+    setShowLoadDialog(false);
+    
+    // Identify foods missing from database
+    const missingFoods = listData.foods.filter(f => !foodDatabase[f.name]);
+    
+    // Get updated database (will include newly fetched data)
+    const updatedDatabase = { ...foodDatabase };
+    
+    // Fetch nutrition data for missing foods
+    if (missingFoods.length > 0 && openAiApiKey) {
+      // Show loading progress
+      setIsLoadingList(true);
+      setLoadingListProgress({ current: 0, total: missingFoods.length });
+      
+      try {
+        // Create food items for API call
+        const foodItemsToFetch = missingFoods.map(f => ({
+          name: f.name,
+          quantity: 1, // Just need the food name for nutrition lookup
+          unit: "g"
+        }));
+        
+        // Fetch nutrition profiles for missing foods
+        setLoadingListProgress({ current: 0, total: missingFoods.length, status: `Fetching nutrition data for ${missingFoods.length} missing food${missingFoods.length > 1 ? 's' : ''}...` });
+        const profiles = await fetchNutritionProfileFromOpenAI(foodItemsToFetch);
+        const profileArray = Array.isArray(profiles) ? profiles : [profiles];
+        
+        setLoadingListProgress({ current: missingFoods.length, total: missingFoods.length, status: "Processing nutrition data..." });
+        
+        // Update database with new nutrition data
+        profileArray.forEach((profile, index) => {
+          const originalFood = missingFoods[index];
+          if (originalFood && profile && profile.nutrients) {
+            const foodName = titleCase(profile.name || originalFood.name);
+            updatedDatabase[foodName] = profile.nutrients;
+          }
+        });
+        
+        // Update foodDatabase state with new data
+        const dbUpdates = {};
+        profileArray.forEach((profile, index) => {
+          const originalFood = missingFoods[index];
+          if (originalFood && profile && profile.nutrients) {
+            const foodName = titleCase(profile.name || originalFood.name);
+            dbUpdates[foodName] = profile.nutrients;
+          }
+        });
+        
+        if (Object.keys(dbUpdates).length > 0) {
+          setFoodDatabase(prev => ({ ...prev, ...dbUpdates }));
+        }
+      } catch (error) {
+        console.error("Failed to fetch nutrition data for missing foods:", error);
+        // Continue loading even if some foods fail to fetch
+      } finally {
+        setIsLoadingList(false);
+        setLoadingListProgress({ current: 0, total: 0 });
+      }
+    }
+    
     const loadedFoods = listData.foods.map(f => {
-      const baseFood = foodDatabase[f.name];
+      const baseFood = updatedDatabase[f.name];
       if (!baseFood) {
         return {
           name: f.name,
@@ -1724,8 +1914,34 @@ Context provided: ${descriptor}
       const unit = foodUnits[f.id] || DEFAULT_DISPLAY_UNIT;
       const overrideWeight = getStoredUnitWeight(f.name, unit);
       const value = gramsToUnit(f.grams, unit, overrideWeight || undefined);
-      const formatted = Number.isFinite(value) ? value.toFixed(1) : "0";
-      const unitLabel = UNIT_OPTIONS.find(opt => opt.value === unit)?.label || unit;
+      
+      // Format without decimal if whole number, otherwise show one decimal place
+      let formatted = "0";
+      let numericValue = 0;
+      if (Number.isFinite(value)) {
+        // Round to 1 decimal place first to handle floating point precision issues
+        const rounded = Math.round(value * 10) / 10;
+        numericValue = rounded;
+        // Check if it's effectively a whole number (within small epsilon)
+        formatted = Math.abs(rounded - Math.round(rounded)) < 0.001 
+          ? Math.round(rounded).toString() 
+          : rounded.toFixed(1);
+      }
+      
+      // Get full unit label without abbreviation (e.g., "Ounces" instead of "Ounces (oz)")
+      const unitOption = UNIT_OPTIONS.find(opt => opt.value === unit);
+      let unitLabel = unitOption 
+        ? unitOption.label.replace(/\s*\([^)]*\)\s*$/, '').trim() // Remove abbreviation in parentheses
+        : unit;
+      
+      // Convert to singular if value is 1
+      if (Math.abs(numericValue - 1) < 0.001 && unitLabel !== 'Whole') {
+        // Simple plural to singular conversion (remove trailing 's')
+        if (unitLabel.endsWith('s')) {
+          unitLabel = unitLabel.slice(0, -1);
+        }
+      }
+      
       return `${formatted} ${unitLabel} ${f.name}`;
     });
     
@@ -1885,7 +2101,7 @@ Context provided: ${descriptor}
   }
 
   if (showSplash) {
-    return (
+  return (
       <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 text-white flex items-center justify-center p-6">
         <div className="bg-white text-gray-900 rounded-2xl shadow-2xl p-8 max-w-3xl w-full space-y-6">
           <div>
@@ -2196,6 +2412,25 @@ Context provided: ${descriptor}
           </div>
         </div>
       </div>
+
+      {/* Loading List Progress Indicator */}
+      {isLoadingList && (
+        <div className="bg-blue-500 text-white p-4 rounded-lg shadow-lg mb-4">
+          <div className="flex items-center gap-3">
+            <span className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full" />
+            <div className="flex-1">
+              <div className="font-semibold">
+                {loadingListProgress.status || "Loading food list..."}
+              </div>
+              {loadingListProgress.total > 0 && (
+                <div className="text-sm mt-1 opacity-90">
+                  {loadingListProgress.total} food{loadingListProgress.total > 1 ? 's' : ''} missing from database
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Food Selection Dialog */}
       {/* Save Dialog */}
@@ -2560,9 +2795,9 @@ Context provided: ${descriptor}
               onChange={e => setRdaGender(e.target.value)} 
               className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              <option value="men">Men</option>
-              <option value="women">Women</option>
-            </select>
+          <option value="men">Men</option>
+          <option value="women">Women</option>
+        </select>
           </div>
           <select 
             name="name" 
@@ -2571,7 +2806,7 @@ Context provided: ${descriptor}
             className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             {Object.keys(foodDatabase).sort().map(f => <option key={f} value={f}>{f}</option>)}
-          </select>
+        </select>
           <div className="flex gap-2">
             <input 
               type="number" 
@@ -2594,7 +2829,7 @@ Context provided: ${descriptor}
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>
-          </div>
+      </div>
           <button 
             onClick={addFood} 
             className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-blue-300"
@@ -2636,68 +2871,252 @@ Context provided: ${descriptor}
       <div className="bg-white rounded-lg shadow-md p-4 overflow-x-auto">
         <h2 className="text-xl font-semibold mb-4">Food List</h2>
         <table className="w-full border text-sm">
-          <thead>
-            <tr className="bg-gray-100 text-left">
-              <th className="p-2">Food</th>
-              <th className="p-2">Amount</th>
-              <th className="p-2">Unit</th>
-              <th className="p-2">Actions</th>
+        <thead>
+          <tr className="bg-gray-100 text-left">
+              <th className="px-2 py-1 min-w-[200px]">Food</th>
+              <th className="px-2 py-1">Amount</th>
+              <th className="px-2 py-1">Unit</th>
               {Object.keys(UNITS).filter(k => k !== 'ounces' && k !== 'omega3_6_ratio').map(k => (
-                <th key={k} className="p-2 whitespace-nowrap">
+                <th key={k} className="px-2 py-1 whitespace-nowrap">
                   {formatLabel(k)} {UNITS[k] ? `(${UNITS[k]})` : ''}
                 </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
             {foods.length === 0 ? (
               <tr>
-                <td colSpan={Object.keys(UNITS).filter(k => k !== 'ounces' && k !== 'omega3_6_ratio').length + 4} className="p-4 text-center text-gray-500">
+                <td colSpan={Object.keys(UNITS).filter(k => k !== 'ounces' && k !== 'omega3_6_ratio').length + 3} className="px-2 py-2 text-center text-gray-500">
                   No foods added yet. Add a food using the form above.
-                </td>
-              </tr>
+              </td>
+            </tr>
             ) : (
               foods.map(f => (
                 <tr key={f.id} className="border-t hover:bg-gray-50">
-                  <td className="p-2 font-medium">{f.name}</td>
-                  <td className="p-2">
+                  <td className="px-2 py-1 font-medium min-w-[200px]">
+                    <div className="flex items-center gap-2">
+                      <button 
+                        onClick={() => removeFood(f.id)}
+                        className="bg-red-500 hover:bg-red-600 text-white px-1.5 py-0.5 rounded text-xs flex-shrink-0"
+                        title="Remove food"
+                      >
+                        ×
+                      </button>
+                      <span>{f.name}</span>
+                    </div>
+                  </td>
+                  <td className="px-2 py-1">
                     {(() => {
                       const unit = foodUnits[f.id] || DEFAULT_DISPLAY_UNIT;
                       const overrideWeight = getStoredUnitWeight(f.name, unit);
                       const value = gramsToUnit(f.grams, unit, overrideWeight || undefined);
-                      const formatted = Number.isFinite(value) ? value.toFixed(1) : "";
+                      const formatted = Number.isFinite(value) ? value.toFixed(2) : "";
+                      
+                      // Get the current input value (use stored value or formatted)
+                      const inputValue = amountInputValues[f.id] !== undefined ? amountInputValues[f.id] : formatted;
+                      
+                      // Validate: check if value is a valid number and >= 0
+                      const isValid = inputValue === "" || (!isNaN(parseFloat(inputValue)) && parseFloat(inputValue) >= 0);
+                      
+                      const isFocused = focusedAmountInput === f.id;
+                      const isTextMode = textModeInputs.has(f.id);
+                      // For number type, format to 2 decimal places to ensure consistent display
+                      // When in text mode or focused, show raw input value
+                      // When not in text mode, show formatted value with 2 decimal places
+                      const displayValue = (isFocused || isTextMode)
+                        ? inputValue 
+                        : (isValid && inputValue !== "" 
+                            ? (() => {
+                                const num = parseFloat(inputValue);
+                                return !isNaN(num) ? num.toFixed(2) : formatted;
+                              })()
+                            : formatted);
+                      
                       return (
                         <input 
-                          type="number" 
-                          step="0.1"
+                          type={isTextMode ? "text" : "number"}
+                          step="1"
                           min="0"
-                          value={formatted} 
-                          onChange={(e) => updateFoodQuantity(f.id, e.target.value, unit)} 
-                          className="border p-1 w-24 rounded" 
-                          onKeyPress={(e) => e.key === 'Enter' && updateFoodQuantity(f.id, e.target.value, unit)}
+                          value={displayValue}
+                          onChange={(e) => {
+                            const newValue = e.target.value;
+                            // Update the input value state
+                            setAmountInputValues(prev => ({ ...prev, [f.id]: newValue }));
+                            // Still call updateFoodQuantity, but allow any input
+                            updateFoodQuantity(f.id, newValue, unit);
+                          }}
+                          onBeforeInput={(e) => {
+                            // If all text is selected, clear it before the new input is inserted
+                            const input = e.target;
+                            const isAllSelected = input.selectionStart === 0 && 
+                                                  input.selectionEnd === input.value.length && 
+                                                  input.value.length > 0;
+                            
+                            if (isAllSelected) {
+                              // Clear the value and selection so new input replaces it
+                              input.value = "";
+                              setAmountInputValues(prev => ({ ...prev, [f.id]: "" }));
+                              // Switch to text mode to ensure proper handling
+                              setTextModeInputs(prev => new Set(prev).add(f.id));
+                            } else {
+                              // Switch to text mode when user starts typing
+                              setTextModeInputs(prev => new Set(prev).add(f.id));
+                            }
+                          }}
+                          onInput={(e) => {
+                            // Handle input event immediately to ensure proper text replacement
+                            // This fires synchronously and helps with text replacement when all is selected
+                            const newValue = e.target.value;
+                            setAmountInputValues(prev => ({ ...prev, [f.id]: newValue }));
+                            // onChange will handle updateFoodQuantity
+                          }}
+                          onMouseDown={(e) => {
+                            // Select all text on mouse down (before focus) to ensure selection is established
+                            // This ensures the selection is ready when the user starts typing
+                            const input = e.target;
+                            // Only select if clicking directly on the input, not on spinner arrows
+                            // Check if the click is within the input's text area (not on the spinner)
+                            const rect = input.getBoundingClientRect();
+                            const clickX = e.clientX;
+                            const isClickOnSpinner = clickX > rect.right - 30; // Spinner is typically ~30px wide
+                            
+                            if (!isClickOnSpinner) {
+                              // Mark that we just selected this input
+                              setJustSelectedInputs(prev => new Set(prev).add(f.id));
+                              // Try to select - select() should work on number inputs
+                              setTimeout(() => {
+                                try {
+                                  input.select();
+                                } catch (e) {
+                                  // If select fails, that's okay - we'll handle replacement in onKeyDown
+                                }
+                              }, 0);
+                            }
+                          }}
+                          onFocus={(e) => {
+                            setFocusedAmountInput(f.id);
+                            // Mark that we just selected this input
+                            setJustSelectedInputs(prev => new Set(prev).add(f.id));
+                            // Try to select all text on focus
+                            // Note: select() works on number inputs, even if setSelectionRange doesn't
+                            const input = e.target;
+                            requestAnimationFrame(() => {
+                              try {
+                                input.select();
+                              } catch (e) {
+                                // If select fails, that's okay
+                              }
+                              // Also try again after a small delay
+                              setTimeout(() => {
+                                if (document.activeElement === input) {
+                                  try {
+                                    input.select();
+                                  } catch (e) {
+                                    // If select fails, that's okay
+                                  }
+                                }
+                              }, 10);
+                            });
+                          }}
+                          onKeyDown={(e) => {
+                            // Don't switch to text mode for arrow keys (spinner arrows work with number input)
+                            if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                              // Clear the just-selected flag if user uses arrows
+                              setJustSelectedInputs(prev => {
+                                const newSet = new Set(prev);
+                                newSet.delete(f.id);
+                                return newSet;
+                              });
+                              return;
+                            }
+                            
+                            // Check if we just programmatically selected this input
+                            const wasJustSelected = justSelectedInputs.has(f.id);
+                            
+                            // Check if it's a printable character
+                            const isPrintable = e.key.length === 1 || /^[0-9.\-+eE]$/.test(e.key);
+                            
+                            if (wasJustSelected && isPrintable) {
+                              // Clear the value so the new character replaces it
+                              const input = e.target;
+                              input.value = "";
+                              setAmountInputValues(prev => ({ ...prev, [f.id]: "" }));
+                              // Clear the flag
+                              setJustSelectedInputs(prev => {
+                                const newSet = new Set(prev);
+                                newSet.delete(f.id);
+                                return newSet;
+                              });
+                            }
+                            
+                            // Switch to text mode when user starts typing
+                            setTextModeInputs(prev => new Set(prev).add(f.id));
+                          }}
+                          onBlur={() => {
+                            setFocusedAmountInput(null);
+                            setTextModeInputs(prev => {
+                              const newSet = new Set(prev);
+                              newSet.delete(f.id);
+                              return newSet;
+                            });
+                            // Clear the just-selected flag
+                            setJustSelectedInputs(prev => {
+                              const newSet = new Set(prev);
+                              newSet.delete(f.id);
+                              return newSet;
+                            });
+                            if (inputValue === "") {
+                              return;
+                            }
+                            // On blur, if invalid, reset to formatted value
+                            if (!isValid) {
+                              setAmountInputValues(prev => ({ ...prev, [f.id]: formatted }));
+                              updateFoodQuantity(f.id, formatted, unit);
+                            } else {
+                              // If valid, format to 2 decimal places
+                              const numValue = parseFloat(inputValue);
+                              if (!isNaN(numValue)) {
+                                const formattedValue = numValue.toFixed(2);
+                                setAmountInputValues(prev => ({ ...prev, [f.id]: formattedValue }));
+                                updateFoodQuantity(f.id, formattedValue, unit);
+                              }
+                            }
+                          }}
+                          className={`border p-1 w-24 rounded ${!isValid ? 'border-red-500' : ''}`}
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter') {
+                              if (isValid && inputValue !== "") {
+                                const numValue = parseFloat(inputValue);
+                                if (!isNaN(numValue)) {
+                                  const formattedValue = numValue.toFixed(2);
+                                  setAmountInputValues(prev => ({ ...prev, [f.id]: formattedValue }));
+                                  updateFoodQuantity(f.id, formattedValue, unit);
+                                } else {
+                                  updateFoodQuantity(f.id, inputValue, unit);
+                                }
+                              } else {
+                                updateFoodQuantity(f.id, inputValue, unit);
+                              }
+                            }
+                          }}
                         />
                       );
                     })()}
                   </td>
-                  <td className="p-2">
+                  <td className="px-2 py-1">
                     <select
                       value={foodUnits[f.id] || DEFAULT_DISPLAY_UNIT}
                       onChange={(e) => handleFoodUnitChange(f.id, e.target.value)}
                       className="border p-1 rounded"
                     >
-                      {UNIT_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
+                      {UNIT_OPTIONS.map((opt) => {
+                        // Remove abbreviation in parentheses (e.g., "Grams (g)" -> "Grams")
+                        const labelWithoutAbbr = opt.label.replace(/\s*\([^)]*\)\s*$/, '').trim();
+                        return (
+                          <option key={opt.value} value={opt.value}>{labelWithoutAbbr}</option>
+                        );
+                      })}
                     </select>
-                  </td>
-                  <td className="p-2">
-                    <button 
-                      onClick={() => removeFood(f.id)}
-                      className="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded text-xs"
-                      title="Remove food"
-                    >
-                      ×
-                    </button>
                   </td>
                   {Object.keys(UNITS).filter(k => k !== 'ounces' && k !== 'omega3_6_ratio').map(k => {
                     // Get serving_size from the food item or database (same logic as calculateTotals)
@@ -2723,16 +3142,16 @@ Context provided: ${descriptor}
                     const nutrientValue = (f[k] || 0) * scaleFactor;
                     
                     return (
-                      <td key={k} className="p-2 text-right">
-                        {formatNumber(nutrientValue, 2)}
+                      <td key={k} className="px-2 py-1 text-right">
+                        {formatNumber(nutrientValue, k === 'calories' ? 0 : 1)}
                       </td>
                     );
                   })}
                 </tr>
               ))
             )}
-          </tbody>
-        </table>
+        </tbody>
+      </table>
       </div>
 
       <div className="mt-6 bg-gray-50 rounded-lg p-4">
@@ -2770,14 +3189,14 @@ Context provided: ${descriptor}
               >
                 <div className="font-medium text-sm">
                   {formatLabel(k)}
-                </div>
+        </div>
                 <div className={`text-lg font-semibold ${
                   showRDA && percentage !== null && !isNaN(percentage)
                     ? (isAtOrAboveRDA ? 'text-green-600' : 'text-red-600')
                     : 'text-gray-800'
                 }`}>
                   {k === 'omega3_6_ratio' ? (v !== null && !isNaN(v) ? formatRatio(v) : 'N/A') : formatNumber(v, k === 'calories' ? 0 : 2)} {UNITS[k] || ''}
-                </div>
+      </div>
                 {showRDA && (
                   <div className="text-xs text-gray-600 mt-1">
                     {k === 'omega3_6_ratio' ? (
