@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -644,14 +644,16 @@ export default function NutritionAnalyzerApp() {
             ...createEmptyNutrientProfile(),
             name: f.name,
             grams: f.ounces / G_TO_OZ,
-            id: foodId
+            id: foodId,
+            _savedUnit: f.unit // Preserve the saved unit for restoration
           };
         }
         return {
           ...foodData,
           name: f.name,
           grams: f.ounces / G_TO_OZ,
-          id: foodId
+          id: foodId,
+          _savedUnit: f.unit // Preserve the saved unit for restoration
         };
       });
     }
@@ -696,11 +698,21 @@ export default function NutritionAnalyzerApp() {
   const [foods, setFoods] = useState(loadFoods);
   const [currentSelection, setCurrentSelection] = useState({ name: "", amount: "", unit: "g" });
   const [multiplier, setMultiplier] = useState(() => parseFloat(localStorage.getItem('multiplier')) || 1);
+  const [targetDailyCalories, setTargetDailyCalories] = useState(() => {
+    const stored = localStorage.getItem('targetDailyCalories');
+    return stored ? parseFloat(stored) : null;
+  });
+  const [advancedMode, setAdvancedMode] = useState(() => {
+    const stored = localStorage.getItem('advancedMode');
+    return stored ? stored === 'true' : false;
+  });
   const [rdaGender, setRdaGender] = useState(loadRdaGender);
   const [savedLists, setSavedLists] = useState(loadSavedLists);
   const [saveListName, setSaveListName] = useState("");
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [showLoadDialog, setShowLoadDialog] = useState(false);
+  const [renamingListName, setRenamingListName] = useState(null);
+  const [newListName, setNewListName] = useState("");
   const [showDeleteDatabaseDialog, setShowDeleteDatabaseDialog] = useState(false);
   const [showTextListDialog, setShowTextListDialog] = useState(false);
   const [textListContent, setTextListContent] = useState("");
@@ -728,6 +740,8 @@ export default function NutritionAnalyzerApp() {
   const [parsedFoodsPreview, setParsedFoodsPreview] = useState([]);
   const [parsedLinesPreview, setParsedLinesPreview] = useState([]);
   const [isPreviewStage, setIsPreviewStage] = useState(false);
+  const [showAddOrNewListDialog, setShowAddOrNewListDialog] = useState(false);
+  const [pendingNutritionInput, setPendingNutritionInput] = useState("");
   const [foodUnits, setFoodUnits] = useState(() => {
     // Load units by food name from localStorage
     const loadedUnitsByName = loadFoodUnits();
@@ -750,6 +764,26 @@ export default function NutritionAnalyzerApp() {
   const requestQueueRef = useRef([]);
   const isProcessingQueueRef = useRef(false);
   const lastRequestTimeRef = useRef(null);
+  const newlyAddedFoodIdsRef = useRef(new Set());
+  const foodUnitsRef = useRef(foodUnits);
+
+  // Handle OpenAI API key from query parameter
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const apiKeyFromUrl = urlParams.get('openai_key') || urlParams.get('openaiKey');
+    
+    if (apiKeyFromUrl) {
+      // Save the API key to state and localStorage
+      setOpenAiApiKey(apiKeyFromUrl);
+      localStorage.setItem('openAiApiKey', apiKeyFromUrl);
+      
+      // Remove the query parameter from URL without page reload
+      urlParams.delete('openai_key');
+      urlParams.delete('openaiKey');
+      const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '') + window.location.hash;
+      window.history.replaceState({}, '', newUrl);
+    }
+  }, []); // Run only once on mount
 
   useEffect(() => { 
     localStorage.setItem('foods', JSON.stringify(foods.map(f => ({ 
@@ -759,27 +793,69 @@ export default function NutritionAnalyzerApp() {
     })))); 
   }, [foods, foodUnits]);
   
+  // Keep ref in sync with foodUnits state
+  useEffect(() => {
+    foodUnitsRef.current = foodUnits;
+  }, [foodUnits]);
+
   // Restore units from localStorage when foods are loaded (mapping by name to ID)
-  // This runs when foods change, but only if foodUnits is empty or doesn't match
+  // This runs when foods change to restore previously selected units
   useEffect(() => {
     if (foods.length > 0) {
       const loadedUnitsByName = loadFoodUnits();
       const restoredUnits = {};
+      const restoredAmountValues = {};
       foods.forEach(food => {
-        if (loadedUnitsByName[food.name]) {
-          restoredUnits[food.id] = loadedUnitsByName[food.name];
+        // Prefer unit from foodUnits localStorage, but fall back to saved unit in food data
+        const unit = loadedUnitsByName[food.name] || food._savedUnit;
+        if (unit) {
+          restoredUnits[food.id] = unit;
         }
       });
-      // Only update if we have units to restore and they differ from current state
+      // Restore units
       if (Object.keys(restoredUnits).length > 0) {
         setFoodUnits(prev => {
-          // Check if we need to update (avoid unnecessary updates)
-          const needsUpdate = Object.keys(restoredUnits).some(id => prev[id] !== restoredUnits[id]);
-          return needsUpdate ? { ...prev, ...restoredUnits } : prev;
+          // Merge with existing units, prioritizing restored units
+          const merged = { ...prev, ...restoredUnits };
+          // Only update if there are actual changes to avoid infinite loops
+          const hasChanges = Object.keys(restoredUnits).some(id => prev[id] !== restoredUnits[id]);
+          if (hasChanges) {
+            return merged;
+          }
+          return prev;
         });
       }
+      
+      // Only restore amount input values if they don't already exist (to avoid overwriting user input)
+      // This runs after foods are set, so we need to be careful not to overwrite values that were just set
+      // Skip restoration for newly added foods (they have correct values set in finalizeNutritionImport)
+      // Use ref to read current foodUnits state without adding it as a dependency
+      setAmountInputValues(prev => {
+        const newValues = {};
+        let hasNewValues = false;
+        const currentFoodUnits = foodUnitsRef.current;
+        foods.forEach(food => {
+          // Skip if this food was just added (it already has the correct value set)
+          if (newlyAddedFoodIdsRef.current.has(food.id)) {
+            return;
+          }
+          // Only restore if this food doesn't have an input value yet
+          if (prev[food.id] === undefined) {
+            // Use current foodUnits from ref, or fall back to restored units
+            const unit = currentFoodUnits[food.id] || restoredUnits[food.id] || loadedUnitsByName[food.name] || food._savedUnit || DEFAULT_DISPLAY_UNIT;
+            const normalizedUnit = normalizeUnitName(unit);
+            const overrideWeight = getStoredUnitWeight(food.name, normalizedUnit);
+            const value = gramsToUnit(food.grams, normalizedUnit, overrideWeight || undefined);
+            const formatted = Number.isFinite(value) ? value.toFixed(2) : "";
+            newValues[food.id] = formatted;
+            hasNewValues = true;
+          }
+        });
+        // Only update if we have new values to avoid unnecessary re-renders
+        return hasNewValues ? { ...prev, ...newValues } : prev;
+      });
     }
-  }, [foods]); // Run when foods change (will restore units from localStorage if available)
+  }, [foods]); // Only depend on foods to avoid infinite loops
   
   // Save foodUnits to localStorage (by food name, not ID, since IDs change on reload)
   useEffect(() => {
@@ -795,6 +871,14 @@ export default function NutritionAnalyzerApp() {
   }, [foods, foodUnits]);
   
   useEffect(() => { localStorage.setItem('multiplier', multiplier); }, [multiplier]);
+  useEffect(() => { 
+    if (targetDailyCalories !== null) {
+      localStorage.setItem('targetDailyCalories', targetDailyCalories.toString());
+    } else {
+      localStorage.removeItem('targetDailyCalories');
+    }
+  }, [targetDailyCalories]);
+  useEffect(() => { localStorage.setItem('advancedMode', advancedMode.toString()); }, [advancedMode]);
   useEffect(() => { localStorage.setItem('rdaGender', rdaGender); }, [rdaGender]);
   useEffect(() => { localStorage.setItem('foodDatabase', JSON.stringify(foodDatabase)); }, [foodDatabase]);
   useEffect(() => { localStorage.setItem('openAiApiKey', openAiApiKey); }, [openAiApiKey]);
@@ -969,13 +1053,27 @@ export default function NutritionAnalyzerApp() {
   async function handleFoodUnitChange(id, unit) {
     setFoodUnits(prev => ({ ...prev, [id]: unit }));
     const normalizedUnit = normalizeUnitName(unit);
+    
+    // Update the input value to reflect the new unit conversion
+    const food = foods.find(f => f.id === id);
+    if (food) {
+      const overrideWeight = getStoredUnitWeight(food.name, normalizedUnit);
+      const value = gramsToUnit(food.grams, normalizedUnit, overrideWeight || undefined);
+      const formatted = Number.isFinite(value) ? value.toFixed(2) : "";
+      setAmountInputValues(prev => ({ ...prev, [id]: formatted }));
+    }
+    
     if (normalizedUnit === "whole") {
-      const food = foods.find(f => f.id === id);
       if (food && !getStoredUnitWeight(food.name, normalizedUnit)) {
         try {
           await resolveItemGrams(
             { name: food.name, unit: normalizedUnit, quantity: 1 }
           );
+          // Recalculate after getting the weight
+          const overrideWeight = getStoredUnitWeight(food.name, normalizedUnit);
+          const value = gramsToUnit(food.grams, normalizedUnit, overrideWeight || undefined);
+          const formatted = Number.isFinite(value) ? value.toFixed(2) : "";
+          setAmountInputValues(prev => ({ ...prev, [id]: formatted }));
         } catch (error) {
           console.warn("Unable to resolve weight for unit 'whole':", error);
         }
@@ -1496,6 +1594,16 @@ Context provided: ${descriptor}
 
   async function handleNutritionSubmit(e) {
     if (e) e.preventDefault();
+    
+    // If there are existing foods, show dialog FIRST (before validation)
+    // This way the dialog appears immediately when user clicks the button
+    if (foods.length > 0) {
+      setPendingNutritionInput(nutritionInput);
+      setShowAddOrNewListDialog(true);
+      return;
+    }
+    
+    // If no existing foods, do validation and proceed directly
     if (!openAiApiKey) {
       setParseError("Please enter your OpenAI API key.");
       return;
@@ -1504,14 +1612,20 @@ Context provided: ${descriptor}
       setParseError("Please describe at least one food.");
       return;
     }
+    
+    await proceedWithNutritionParsing(nutritionInput);
+  }
+  
+  async function proceedWithNutritionParsing(inputText) {
+    
     setIsParsingFoods(true);
     setParseError("");
     try {
-      const parsedFoods = await parseFoodsWithOpenAI(nutritionInput.trim());
+      const parsedFoods = await parseFoodsWithOpenAI(inputText.trim());
       if (!parsedFoods.length) {
         throw new Error("NutritionGPT did not recognize any foods in your input.");
       }
-      const lines = splitInputLines(nutritionInput.trim());
+      const lines = splitInputLines(inputText.trim());
       const lineMappings = (lines.length ? lines : ["All entries"]).map((line, idx) => ({
         id: `line-${idx}`,
         line,
@@ -1544,6 +1658,50 @@ Context provided: ${descriptor}
     } finally {
       setIsParsingFoods(false);
     }
+  }
+  
+  function handleAddToCurrentList() {
+    setShowAddOrNewListDialog(false);
+    // If there's pending input (from splash screen), proceed with parsing
+    if (pendingNutritionInput.trim()) {
+      // Do validation before proceeding
+      if (!openAiApiKey) {
+        setParseError("Please enter your OpenAI API key.");
+        return;
+      }
+      proceedWithNutritionParsing(pendingNutritionInput);
+    } else {
+      // No pending input - user clicked from main screen, show splash screen
+      setShowSplash(true);
+    }
+  }
+  
+  function handleCreateNewList() {
+    setShowAddOrNewListDialog(false);
+    // Clear current foods and related state
+    setFoods([]);
+    setFoodUnits({});
+    setAmountInputValues({});
+    setCurrentListName(null);
+    localStorage.removeItem('currentListName');
+    
+    // If there's pending input (from splash screen), proceed with parsing
+    if (pendingNutritionInput.trim()) {
+      // Do validation before proceeding
+      if (!openAiApiKey) {
+        setParseError("Please enter your OpenAI API key.");
+        return;
+      }
+      proceedWithNutritionParsing(pendingNutritionInput);
+    } else {
+      // No pending input - user clicked from main screen, show splash screen
+      setShowSplash(true);
+    }
+  }
+  
+  function handleCancelAddOrNewList() {
+    setShowAddOrNewListDialog(false);
+    setPendingNutritionInput("");
   }
 
   async function finalizeNutritionImport() {
@@ -1649,6 +1807,7 @@ Context provided: ${descriptor}
 
       // Second pass: create food entries
       const newFoodUnits = {};
+      const newAmountInputValues = {};
       for (const data of itemData) {
         try {
           if (!data.nutrientProfile) {
@@ -1698,6 +1857,15 @@ Context provided: ${descriptor}
           }
           
           newFoodUnits[foodId] = unitToUse;
+          
+          // Calculate and set the amount input value for this food
+          const normalizedUnit = normalizeUnitName(unitToUse);
+          const overrideWeight = data.gramsPerUnit && data.unitKey === normalizedUnit ? data.gramsPerUnit : null;
+          const storedWeight = getStoredUnitWeight(data.foodName, normalizedUnit, unitWeightCache);
+          const finalOverrideWeight = overrideWeight || storedWeight;
+          const value = gramsToUnit(data.grams, normalizedUnit, finalOverrideWeight || undefined);
+          const formatted = Number.isFinite(value) ? value.toFixed(2) : "";
+          newAmountInputValues[foodId] = formatted;
         } catch (error) {
           console.error("Failed to import", data.item.name, error);
           if (!failedFoods.includes(titleCase(data.item.name))) {
@@ -1708,12 +1876,22 @@ Context provided: ${descriptor}
       if (!newFoods.length) {
         throw new Error("Could not map any foods to quantities.");
       }
+      // Track newly added food IDs to skip restoration for them
+      newlyAddedFoodIdsRef.current = new Set(newFoods.map(f => f.id));
+      
       setFoodDatabase((prev) => ({ ...prev, ...dbUpdates }));
-      setFoods(newFoods);
+      // Append to existing foods if there are any (user chose to add to current list)
+      setFoods(prev => prev.length > 0 ? [...prev, ...newFoods] : newFoods);
       setFoodUnits(prev => ({ ...prev, ...newFoodUnits }));
+      setAmountInputValues(prev => ({ ...prev, ...newAmountInputValues }));
       if (unitWeightCacheChanged) {
         setFoodUnitWeights(unitWeightCache);
       }
+      
+      // Clear the ref after a short delay to allow restoration to work on subsequent changes
+      setTimeout(() => {
+        newlyAddedFoodIdsRef.current.clear();
+      }, 100);
       setCurrentListName(null);
       localStorage.removeItem('currentListName');
       setShowSplash(false);
@@ -1752,6 +1930,7 @@ Context provided: ${descriptor}
         unit: foodUnits[f.id] || DEFAULT_DISPLAY_UNIT
       })),
       multiplier: multiplier,
+      targetDailyCalories: targetDailyCalories,
       rdaGender: rdaGender,
       savedAt: new Date().toISOString()
     };
@@ -1869,6 +2048,7 @@ Context provided: ${descriptor}
     setFoods(loadedFoods);
     setFoodUnits(restoredUnits);
     if (listData.multiplier) setMultiplier(listData.multiplier);
+    if (listData.targetDailyCalories !== undefined) setTargetDailyCalories(listData.targetDailyCalories);
     if (listData.rdaGender) setRdaGender(listData.rdaGender);
     setCurrentListName(listName);
     localStorage.setItem('currentListName', listName);
@@ -1886,6 +2066,41 @@ Context provided: ${descriptor}
       setCurrentListName(null);
       localStorage.removeItem('currentListName');
     }
+  }
+
+  function renameSavedList(oldName, newName) {
+    const trimmedNewName = newName.trim();
+    if (!trimmedNewName) {
+      alert("Please enter a name for the list");
+      return;
+    }
+    if (trimmedNewName === oldName) {
+      // No change, just cancel
+      setRenamingListName(null);
+      setNewListName("");
+      return;
+    }
+    if (savedLists[trimmedNewName]) {
+      alert(`A list named "${trimmedNewName}" already exists. Please choose a different name.`);
+      return;
+    }
+    
+    const updated = { ...savedLists };
+    // Copy the list data to the new name
+    updated[trimmedNewName] = updated[oldName];
+    // Delete the old name
+    delete updated[oldName];
+    setSavedLists(updated);
+    localStorage.setItem('savedFoodLists', JSON.stringify(updated));
+    
+    // Update current list name if this was the current list
+    if (currentListName === oldName) {
+      setCurrentListName(trimmedNewName);
+      localStorage.setItem('currentListName', trimmedNewName);
+    }
+    
+    setRenamingListName(null);
+    setNewListName("");
   }
 
   function deleteFoodFromDatabase(foodName) {
@@ -1968,6 +2183,7 @@ Context provided: ${descriptor}
         unit: foodUnits[f.id] || DEFAULT_DISPLAY_UNIT
       })),
       multiplier: multiplier,
+      targetDailyCalories: targetDailyCalories,
       rdaGender: rdaGender,
       exportedAt: new Date().toISOString()
     };
@@ -2026,6 +2242,7 @@ Context provided: ${descriptor}
           setFoods(importedFoods);
           setFoodUnits(restoredUnits);
           if (data.multiplier) setMultiplier(data.multiplier);
+          if (data.targetDailyCalories !== undefined) setTargetDailyCalories(data.targetDailyCalories);
           if (data.rdaGender) setRdaGender(data.rdaGender);
           // Clear current list name since this is imported data
           setCurrentListName(null);
@@ -2087,6 +2304,38 @@ Context provided: ${descriptor}
     return totals;
   }
 
+  // Calculate base calories (without multiplier) to avoid circular dependency
+  const baseCalories = useMemo(() => {
+    let total = 0;
+    foods.forEach(f => {
+      let servingSizeInGrams = 100;
+      if (f._servingSize && f._servingSize.grams) {
+        servingSizeInGrams = f._servingSize.grams;
+      } else {
+        const baseFood = foodDatabase[f.name];
+        if (baseFood) {
+          if (baseFood._servingSize && baseFood._servingSize.grams) {
+            servingSizeInGrams = baseFood._servingSize.grams;
+          } else if (baseFood._serviceSize && baseFood._serviceSize.grams) {
+            servingSizeInGrams = baseFood._serviceSize.grams;
+          }
+        }
+      }
+      const userGrams = f.grams; // Without multiplier
+      const scaleFactor = userGrams / servingSizeInGrams;
+      total += ((f.calories || 0) * scaleFactor);
+    });
+    return total;
+  }, [foods, foodDatabase]);
+
+  // Calculate multiplier from target daily calories
+  useEffect(() => {
+    if (targetDailyCalories !== null && baseCalories > 0) {
+      const newMultiplier = targetDailyCalories / baseCalories;
+      setMultiplier(newMultiplier);
+    }
+  }, [targetDailyCalories, baseCalories]);
+
   const totals = calculateTotals();
   const RDA = rdaGender === 'men' ? RDA_MEN : RDA_WOMEN;
   function pctRDA(key) { 
@@ -2102,6 +2351,40 @@ Context provided: ${descriptor}
 
   if (showSplash) {
   return (
+    <>
+      {/* Add to Current List or Create New List Dialog - show on top of splash screen */}
+      {showAddOrNewListDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full space-y-6">
+            <div>
+              <h2 className="text-2xl font-bold text-slate-900">Add Foods to List</h2>
+              <p className="text-slate-600 mt-2">
+                You have <strong>{foods.length}</strong> food(s) in your current list.
+              </p>
+            </div>
+            <div className="space-y-3">
+              <button
+                onClick={handleAddToCurrentList}
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors"
+              >
+                Add to Current List
+              </button>
+              <button
+                onClick={handleCreateNewList}
+                className="w-full bg-slate-200 hover:bg-slate-300 text-slate-900 px-6 py-3 rounded-lg font-semibold transition-colors"
+              >
+                Create New List
+              </button>
+              <button
+                onClick={handleCancelAddOrNewList}
+                className="w-full border border-slate-300 hover:border-slate-400 text-slate-600 hover:text-slate-900 px-6 py-3 rounded-lg font-semibold transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 text-white flex items-center justify-center p-6">
         <div className="bg-white text-gray-900 rounded-2xl shadow-2xl p-8 max-w-3xl w-full space-y-6">
           <div>
@@ -2271,11 +2554,47 @@ Context provided: ${descriptor}
           )}
         </div>
       </div>
+    </>
     );
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto min-h-screen bg-gray-50">
+    <>
+      {/* Add to Current List or Create New List Dialog */}
+      {showAddOrNewListDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full space-y-6">
+            <div>
+              <h2 className="text-2xl font-bold text-slate-900">Add Foods to List</h2>
+              <p className="text-slate-600 mt-2">
+                You have <strong>{foods.length}</strong> food(s) in your current list.
+              </p>
+            </div>
+            <div className="space-y-3">
+              <button
+                onClick={handleAddToCurrentList}
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors"
+              >
+                Add to Current List
+              </button>
+              <button
+                onClick={handleCreateNewList}
+                className="w-full bg-slate-200 hover:bg-slate-300 text-slate-900 px-6 py-3 rounded-lg font-semibold transition-colors"
+              >
+                Create New List
+              </button>
+              <button
+                onClick={handleCancelAddOrNewList}
+                className="w-full border border-slate-300 hover:border-slate-400 text-slate-600 hover:text-slate-900 px-6 py-3 rounded-lg font-semibold transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      <div className="p-6 max-w-7xl mx-auto min-h-screen bg-gray-50">
       <div className="bg-white rounded-lg shadow-md p-6 mb-6">
         {/* Rate Limit Status Indicator */}
         {(rateLimitStatus.isRateLimited || rateLimitStatus.isThrottling) && (
@@ -2333,7 +2652,14 @@ Context provided: ${descriptor}
             <button
               onClick={() => {
                 resetSplashFlow();
-                setShowSplash(true);
+                // If there are existing foods, show dialog first
+                if (foods.length > 0) {
+                  setPendingNutritionInput("");
+                  setShowAddOrNewListDialog(true);
+                } else {
+                  // No existing foods, show splash screen directly
+                  setShowSplash(true);
+                }
               }}
               className="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded transition-colors text-sm"
             >
@@ -2367,11 +2693,24 @@ Context provided: ${descriptor}
               📂 Load List
             </button>
             <button
-              onClick={exportToJSON}
-              className="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded transition-colors text-sm"
+              onClick={() => setAdvancedMode(!advancedMode)}
+              className={`px-4 py-2 rounded transition-colors text-sm ${
+                advancedMode 
+                  ? 'bg-yellow-500 hover:bg-yellow-600 text-white' 
+                  : 'bg-gray-400 hover:bg-gray-500 text-white'
+              }`}
+              title="Toggle advanced mode (shows multiplier, API logs, export/import)"
             >
-              ⬇️ Export JSON
+              ⚙️ Advanced
             </button>
+            {advancedMode && (
+              <button
+                onClick={exportToJSON}
+                className="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded transition-colors text-sm"
+              >
+                ⬇️ Export JSON
+              </button>
+            )}
             <button
               onClick={generateTextList}
               className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded transition-colors text-sm"
@@ -2379,20 +2718,22 @@ Context provided: ${descriptor}
             >
               📝 Text List
             </button>
-            <button
-              onClick={() => setShowApiLogs(true)}
-              className={`px-4 py-2 rounded transition-colors text-sm ${
-                rateLimitStatus.isRateLimited || rateLimitStatus.isThrottling
-                  ? 'bg-orange-500 hover:bg-orange-600 text-white'
-                  : 'bg-gray-500 hover:bg-gray-600 text-white'
-              }`}
-              title={`View API logs (${apiLogs.length} entries)${rateLimitStatus.isRateLimited ? ' - Rate limit active' : ''}`}
-            >
-              📋 API Logs {apiLogs.length > 0 && `(${apiLogs.length})`}
-              {(rateLimitStatus.isRateLimited || rateLimitStatus.isThrottling) && (
-                <span className="ml-1">⚠️</span>
-              )}
-            </button>
+            {advancedMode && (
+              <button
+                onClick={() => setShowApiLogs(true)}
+                className={`px-4 py-2 rounded transition-colors text-sm ${
+                  rateLimitStatus.isRateLimited || rateLimitStatus.isThrottling
+                    ? 'bg-orange-500 hover:bg-orange-600 text-white'
+                    : 'bg-gray-500 hover:bg-gray-600 text-white'
+                }`}
+                title={`View API logs (${apiLogs.length} entries)${rateLimitStatus.isRateLimited ? ' - Rate limit active' : ''}`}
+              >
+                📋 API Logs {apiLogs.length > 0 && `(${apiLogs.length})`}
+                {(rateLimitStatus.isRateLimited || rateLimitStatus.isThrottling) && (
+                  <span className="ml-1">⚠️</span>
+                )}
+              </button>
+            )}
             <button
               onClick={() => setShowDeleteDatabaseDialog(true)}
               className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded transition-colors text-sm"
@@ -2400,15 +2741,17 @@ Context provided: ${descriptor}
             >
               🗑️ Manage Database
             </button>
-            <label className="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded transition-colors text-sm cursor-pointer">
-              ⬆️ Import JSON
-              <input
-                type="file"
-                accept=".json"
-                onChange={importFromJSON}
-                className="hidden"
-              />
-            </label>
+            {advancedMode && (
+              <label className="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded transition-colors text-sm cursor-pointer">
+                ⬆️ Import JSON
+                <input
+                  type="file"
+                  accept=".json"
+                  onChange={importFromJSON}
+                  className="hidden"
+                />
+              </label>
+            )}
           </div>
         </div>
       </div>
@@ -2482,33 +2825,88 @@ Context provided: ${descriptor}
               <div className="space-y-2">
                 {Object.entries(savedLists).map(([name, data]) => (
                   <div key={name} className="border rounded p-3 flex justify-between items-center hover:bg-gray-50">
-                    <div className="flex-1">
-                      <div className="font-semibold">{name}</div>
-                      <div className="text-sm text-gray-500">
-                        {data.foods?.length || 0} foods • Saved {data.savedAt ? new Date(data.savedAt).toLocaleDateString() : 'recently'}
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => loadList(name)}
-                        className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm"
-                      >
-                        Load
-                      </button>
-                      <button
-                        onClick={() => deleteSavedList(name)}
-                        className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm"
-                      >
-                        Delete
-                      </button>
-                    </div>
+                    {renamingListName === name ? (
+                      <>
+                        <div className="flex-1 mr-2">
+                          <input
+                            type="text"
+                            value={newListName}
+                            onChange={(e) => setNewListName(e.target.value)}
+                            placeholder="Enter new name"
+                            className="w-full border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            onKeyPress={(e) => {
+                              if (e.key === 'Enter') {
+                                renameSavedList(name, newListName);
+                              } else if (e.key === 'Escape') {
+                                setRenamingListName(null);
+                                setNewListName("");
+                              }
+                            }}
+                            autoFocus
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => {
+                              setRenamingListName(null);
+                              setNewListName("");
+                            }}
+                            className="bg-gray-300 hover:bg-gray-400 text-gray-800 px-3 py-1 rounded text-sm"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={() => renameSavedList(name, newListName)}
+                            className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm"
+                          >
+                            Save
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex-1">
+                          <div className="font-semibold">{name}</div>
+                          <div className="text-sm text-gray-500">
+                            {data.foods?.length || 0} foods • Saved {data.savedAt ? new Date(data.savedAt).toLocaleDateString() : 'recently'}
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => loadList(name)}
+                            className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm"
+                          >
+                            Load
+                          </button>
+                          <button
+                            onClick={() => {
+                              setRenamingListName(name);
+                              setNewListName(name);
+                            }}
+                            className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded text-sm"
+                          >
+                            Rename
+                          </button>
+                          <button
+                            onClick={() => deleteSavedList(name)}
+                            className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 ))}
               </div>
             )}
             <div className="mt-4 flex justify-end">
               <button
-                onClick={() => setShowLoadDialog(false)}
+                onClick={() => {
+                  setShowLoadDialog(false);
+                  setRenamingListName(null);
+                  setNewListName("");
+                }}
                 className="bg-gray-300 hover:bg-gray-400 text-gray-800 px-4 py-2 rounded"
               >
                 Close
@@ -2850,23 +3248,48 @@ Context provided: ${descriptor}
           )}
         </div>
       </div>
-      <div className="bg-white rounded-lg shadow-md p-4 mb-4">
-        <div className="flex items-center gap-2">
-          <label className="font-medium">Multiplier:</label>
-          <input 
-            type="number" 
-            step="0.1"
-            min="0.1"
-            value={multiplier} 
-            onChange={(e) => {
-              const value = parseFloat(e.target.value);
-              setMultiplier(isNaN(value) || value <= 0 ? 1 : value);
-            }} 
-            className="border p-1 w-20 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" 
-          />
-          <span className="text-sm text-gray-600">(Scale all foods by this factor)</span>
+      {advancedMode && (
+        <div className="bg-white rounded-lg shadow-md p-4 mb-4">
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="flex items-center gap-2">
+              <label className="font-medium">Multiplier:</label>
+              <input 
+                type="number" 
+                step="0.1"
+                min="0.1"
+                value={multiplier} 
+                onChange={(e) => {
+                  const value = parseFloat(e.target.value);
+                  setMultiplier(isNaN(value) || value <= 0 ? 1 : value);
+                  // If multiplier is manually changed, clear the calorie target
+                  setTargetDailyCalories(null);
+                }} 
+                className="border p-1 w-20 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" 
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="font-medium">Target Daily Calories:</label>
+              <input 
+                type="number" 
+                step="1"
+                min="0"
+                value={targetDailyCalories !== null ? targetDailyCalories : ""} 
+                onChange={(e) => {
+                  const value = e.target.value === "" ? null : parseFloat(e.target.value);
+                  setTargetDailyCalories(value);
+                }} 
+                placeholder="Enter target"
+                className="border p-1 w-32 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" 
+              />
+              {baseCalories > 0 && (
+                <span className="text-sm text-gray-600">
+                  (Current: {Math.round(baseCalories * multiplier)} kcal)
+                </span>
+              )}
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="bg-white rounded-lg shadow-md p-4 overflow-x-auto">
         <h2 className="text-xl font-semibold mb-4">Food List</h2>
@@ -3350,5 +3773,6 @@ Context provided: ${descriptor}
         })()}
       </div>
     </div>
+    </>
   );
 }
