@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -72,6 +72,86 @@ const CUP_TO_G = 240; // Approximate for most foods
 const TBSP_TO_G = 15;
 const TSP_TO_G = 5;
 const LB_TO_G = 453.592;
+const UNIT_ALIASES = {
+  gram: "g",
+  grams: "g",
+  gms: "g",
+  kilogram: "kg",
+  kilograms: "kg",
+  kilo: "kg",
+  kilos: "kg",
+  "kg.": "kg",
+  ounce: "oz",
+  ounces: "oz",
+  "oz.": "oz",
+  "fluid ounce": "floz",
+  "fluid ounces": "floz",
+  "fl oz": "floz",
+  floz: "floz",
+  cup: "cup",
+  cups: "cup",
+  "c.": "cup",
+  tbsp: "tbsp",
+  tbs: "tbsp",
+  tablespoon: "tbsp",
+  tablespoons: "tbsp",
+  teaspoon: "tsp",
+  teaspoons: "tsp",
+  tspn: "tsp",
+  lb: "lb",
+  lbs: "lb",
+  pound: "lb",
+  pounds: "lb",
+  milliliter: "ml",
+  milliliters: "ml",
+  millilitre: "ml",
+  millilitres: "ml",
+  litre: "l",
+  litres: "l",
+  serving: "serving",
+  servings: "serving",
+  piece: "piece",
+  pieces: "piece",
+  clove: "clove",
+  cloves: "clove",
+  slice: "piece",
+  slices: "piece",
+  handful: "handful",
+  handfuls: "handful",
+  stick: "stick",
+  sticks: "stick",
+  can: "can",
+  cans: "can",
+  package: "package",
+  packages: "package",
+  bag: "bag",
+  bags: "bag",
+  whole: "whole",
+  "one whole": "whole",
+  "whole item": "whole",
+  "whole fruit": "whole"
+};
+
+const UNIT_TO_GRAMS = {
+  g: 1,
+  kg: 1000,
+  oz: OZ_TO_G,
+  floz: 29.5735,
+  cup: CUP_TO_G,
+  tbsp: TBSP_TO_G,
+  tsp: TSP_TO_G,
+  lb: LB_TO_G,
+  ml: 1,
+  l: 1000,
+  serving: 150,
+  piece: 75,
+  clove: 5,
+  handful: 30,
+  stick: 113,
+  can: 400,
+  package: 227,
+  bag: 500
+};
 
 const UNIT_OPTIONS = [
   { value: 'g', label: 'Grams (g)' },
@@ -79,19 +159,85 @@ const UNIT_OPTIONS = [
   { value: 'cup', label: 'Cups (c)' },
   { value: 'tbsp', label: 'Tablespoons (tbsp)' },
   { value: 'tsp', label: 'Teaspoons (tsp)' },
-  { value: 'lb', label: 'Pounds (lb)' }
+  { value: 'lb', label: 'Pounds (lb)' },
+  { value: 'whole', label: 'One Whole' }
 ];
+const DEFAULT_DISPLAY_UNIT = 'oz';
 
-function convertToGrams(value, unit) {
-  switch(unit) {
-    case 'g': return value;
-    case 'oz': return value * OZ_TO_G;
-    case 'cup': return value * CUP_TO_G;
-    case 'tbsp': return value * TBSP_TO_G;
-    case 'tsp': return value * TSP_TO_G;
-    case 'lb': return value * LB_TO_G;
-    default: return value;
+function normalizeUnitName(unit = "g") {
+  if (!unit) return "g";
+  const cleaned = unit.toString().trim().toLowerCase();
+  if (UNIT_ALIASES[cleaned]) return UNIT_ALIASES[cleaned];
+
+  // handle cases like "cups cooked" or "oz cooked salmon"
+  const tokens = cleaned.split(/[^a-z]+/).filter(Boolean);
+  for (const token of tokens) {
+    if (UNIT_ALIASES[token]) return UNIT_ALIASES[token];
   }
+  return tokens[0] || cleaned || "g";
+}
+
+function convertToGrams(value, unit, overrideGramsPerUnit = null) {
+  if (!value) return 0;
+  const normalizedUnit = normalizeUnitName(unit);
+  const gramsPerUnit = overrideGramsPerUnit ?? UNIT_TO_GRAMS[normalizedUnit];
+  if (gramsPerUnit) return value * gramsPerUnit;
+  return value; // assume already grams if unknown
+}
+
+function gramsToUnit(amountInGrams, unit, overrideGramsPerUnit = null) {
+  const normalizedUnit = normalizeUnitName(unit);
+  const gramsPerUnit = overrideGramsPerUnit ?? UNIT_TO_GRAMS[normalizedUnit];
+  if (!gramsPerUnit || gramsPerUnit === 0) return amountInGrams;
+  return amountInGrams / gramsPerUnit;
+}
+
+const generateId = () => (crypto?.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
+
+function safeJsonParse(payload) {
+  if (!payload) throw new Error("Empty response from OpenAI.");
+  try {
+    return JSON.parse(payload);
+  } catch (err) {
+    const fenced = payload.match(/```json([\s\S]*?)```/i) || payload.match(/```([\s\S]*?)```/i);
+    if (fenced && fenced[1]) {
+      return JSON.parse(fenced[1].trim());
+    }
+    throw err;
+  }
+}
+
+function titleCase(str = "") {
+  return str
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ')
+    .trim();
+}
+
+const splitInputLines = (inputText) =>
+  inputText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+function resetNutritionSplash(setters) {
+  const { setParsedFoodsPreview, setParsedLinesPreview, setIsPreviewStage, setParseError } = setters;
+  setParsedFoodsPreview([]);
+  setParsedLinesPreview([]);
+  setIsPreviewStage(false);
+  setParseError("");
+}
+
+const normalizeFoodName = (name = "") => name.trim().toLowerCase();
+
+function findFoodKeyInDatabase(name, dbState) {
+  if (!name) return null;
+  const target = normalizeFoodName(name);
+  return (
+    Object.keys(dbState).find((key) => normalizeFoodName(key) === target) || null
+  );
 }
 
 const RDA_MEN = {
@@ -107,7 +253,7 @@ const RDA_MEN = {
   vitaminE: 15,
   vitaminK: 120,
   vitaminA: 900,
-  monounsaturated: 0, 
+  monounsaturated: 33, 
   selenium: 55,
   iron: 8,
   vitaminD: 15,
@@ -134,7 +280,7 @@ const RDA_WOMEN = {
   vitaminE: 15,
   vitaminK: 90,
   vitaminA: 700,
-  monounsaturated: 0,
+  monounsaturated: 33,
   selenium: 55,
   iron: 18,
   vitaminD: 15,
@@ -179,28 +325,291 @@ function createEmptyNutrientProfile() {
   return Object.keys(UNITS).reduce((acc, key) => ({ ...acc, [key]: 0 }), {});
 }
 
+// Parse amount and unit from API response (handles various formats)
+function parseAmountAndUnit(value) {
+  if (value === null || value === undefined) return null;
+  
+  // If it's already an object with value and unit
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    if ('value' in value && 'unit' in value) {
+      return { amount: parseFloat(value.value), unit: String(value.unit) };
+    }
+    // If object has amount and unit as separate keys
+    if ('amount' in value && 'unit' in value) {
+      return { amount: parseFloat(value.amount), unit: String(value.unit) };
+    }
+  }
+  
+  // If it's a string like "100 mg", "100mg", "100.5 mg", "1360 IU", "250 cal", etc.
+  if (typeof value === 'string') {
+    // Match number followed by unit (handles spaces, decimals, and any unit string)
+    // More flexible regex to capture any unit format
+    const match = value.trim().match(/^([+-]?[\d.]+(?:[eE][+-]?\d+)?)\s*(.+?)\s*$/);
+    if (match) {
+      const amount = parseFloat(match[1]);
+      let unit = match[2].trim();
+      
+      // If we got a valid number, return it with the unit (even if we don't recognize the unit)
+      if (!isNaN(amount)) {
+        return { amount, unit };
+      }
+    }
+    // Try to parse as just a number (fallback)
+    const num = parseFloat(value);
+    if (!isNaN(num)) {
+      return { amount: num, unit: null };
+    }
+  }
+  
+  // If it's just a number
+  if (typeof value === 'number' && !isNaN(value)) {
+    return { amount: value, unit: null };
+  }
+  
+  return null;
+}
+
+// Normalize unit string to a standard form
+function normalizeUnit(unit) {
+  if (!unit || typeof unit !== 'string') return null;
+  const normalized = unit.toLowerCase().trim();
+  if (!normalized) return null;
+  
+  // Remove qualifiers like "RAE" (Retinol Activity Equivalents), "DFE" (Dietary Folate Equivalents), etc.
+  // These are qualifiers, not different units - e.g., "µg RAE" is still micrograms
+  const qualifiers = ['rae', 'dfe', 'ate', 'te', 'eq', 'equivalents', 'equivalent'];
+  let cleanedUnit = normalized;
+  for (const qualifier of qualifiers) {
+    // Remove qualifier if it appears after the unit (e.g., "µg rae" -> "µg")
+    cleanedUnit = cleanedUnit.replace(new RegExp(`\\s+${qualifier}\\b`, 'gi'), '');
+    // Also handle if qualifier appears before (e.g., "rae µg" -> "µg")
+    cleanedUnit = cleanedUnit.replace(new RegExp(`\\b${qualifier}\\s+`, 'gi'), '');
+  }
+  cleanedUnit = cleanedUnit.trim();
+  
+  // Handle common variations and aliases
+  const unitMap = {
+    // Grams
+    'g': 'g', 'gram': 'g', 'grams': 'g', 'gr': 'g', 'gm': 'g', 'g.': 'g',
+    // Milligrams
+    'mg': 'mg', 'milligram': 'mg', 'milligrams': 'mg', 'milligramme': 'mg', 'mg.': 'mg',
+    // Micrograms
+    'µg': 'µg', 'ug': 'µg', 'mcg': 'µg', 'microgram': 'µg', 'micrograms': 'µg', 'microgramme': 'µg',
+    // Kilograms
+    'kg': 'kg', 'kilogram': 'kg', 'kilograms': 'kg', 'kilogramme': 'kg', 'kg.': 'kg',
+    // Calories
+    'kcal': 'kcal', 'kilocalorie': 'kcal', 'kilocalories': 'kcal', 'cal': 'cal',
+    'calorie': 'cal', 'calories': 'cal',
+    // International Units
+    'iu': 'IU', 'international unit': 'IU', 'international units': 'IU', 'i.u.': 'IU', 'i.u': 'IU',
+    // Other common variations
+    'ounce': 'oz', 'ounces': 'oz', 'oz': 'oz', 'pound': 'lb', 'pounds': 'lb', 'lb': 'lb'
+  };
+  
+  // Check direct match on cleaned unit
+  if (unitMap[cleanedUnit]) {
+    return unitMap[cleanedUnit];
+  }
+  
+  // Remove common punctuation and check again
+  const punctuationCleaned = cleanedUnit.replace(/[.,;:]/g, '').trim();
+  if (unitMap[punctuationCleaned]) {
+    return unitMap[punctuationCleaned];
+  }
+  
+  // Check if it contains known unit keywords
+  if (punctuationCleaned.includes('micro') || punctuationCleaned.includes('mcg')) {
+    return 'µg';
+  }
+  if (punctuationCleaned.includes('milli') && !punctuationCleaned.includes('micro')) {
+    return 'mg';
+  }
+  if (punctuationCleaned.includes('kilo') && punctuationCleaned.includes('gram')) {
+    return 'kg';
+  }
+  if (punctuationCleaned.includes('gram') && !punctuationCleaned.includes('kilo') && !punctuationCleaned.includes('milli') && !punctuationCleaned.includes('micro')) {
+    return 'g';
+  }
+  if (punctuationCleaned.includes('cal') && !punctuationCleaned.includes('kilo')) {
+    return 'cal';
+  }
+  if (punctuationCleaned.includes('kilo') && punctuationCleaned.includes('cal')) {
+    return 'kcal';
+  }
+  if (punctuationCleaned.includes('international') || punctuationCleaned.includes('i.u')) {
+    return 'IU';
+  }
+  
+  // Return original if we can't normalize (will be handled in conversion function)
+  return normalized;
+}
+
+// IU (International Units) to metric conversion table
+// Based on FDA/WHO standard conversions
+// Note: These are approximations and can vary by vitamin form
+const IU_CONVERSIONS = {
+  // Specific vitamin conversions (most accurate)
+  vitaminD: {
+    factor: 0.025,
+    targetUnit: 'µg',
+    note: 'Vitamin D (cholecalciferol/D3): 1 IU = 0.025 µg. Source: FDA/WHO standard conversion for vitamin D3'
+  },
+  vitaminA: {
+    factor: 0.3,
+    targetUnit: 'µg RAE',
+    note: 'Vitamin A: 1 IU = 0.3 µg RAE (Retinol Activity Equivalents). Note: This is an approximation. Actual conversion varies: Retinol: 1 IU = 0.3 µg RAE, Beta-carotene: 1 IU = 0.6 µg RAE (but often simplified to 0.3 µg). Source: FDA/WHO standard conversion'
+  },
+  vitaminE: {
+    factor: 0.67,
+    targetUnit: 'mg',
+    note: 'Vitamin E (alpha-tocopherol, natural form): 1 IU = 0.67 mg. Note: Synthetic form (dl-alpha-tocopherol) uses 0.45 mg per IU. Source: FDA/WHO standard conversion for natural alpha-tocopherol'
+  },
+  // Generic fallback conversions (less accurate, used when specific conversion not available)
+  generic_ug: {
+    factor: 0.3,
+    targetUnit: 'µg',
+    note: 'Generic conversion for vitamins in µg: 1 IU ≈ 0.3 µg (varies by vitamin). WARNING: This is a rough approximation and may not be accurate'
+  },
+  generic_mg: {
+    factor: 0.67,
+    targetUnit: 'mg',
+    note: 'Generic conversion for vitamins in mg: 1 IU ≈ 0.67 mg (varies by vitamin). WARNING: This is a rough approximation and may not be accurate'
+  }
+};
+
+// Convert from any unit (g, mg, µg, IU, kcal, cal) to the expected unit for each nutrient
+// This function converts the unit while preserving the per-100g relationship
+function convertToExpectedUnit(key, value, unit) {
+  if (!value || isNaN(value)) return value;
+  if (!unit) {
+    // If no unit provided, check if the value seems reasonable for the expected unit
+    // Otherwise, we can't safely convert, so return as-is
+    const expectedUnit = UNITS[key];
+    // For very large numbers without units, might be in wrong unit - but we'll assume it's correct
+    return value;
+  }
+  
+  // Normalize unit string to a standard form
+  const normalizedUnit = normalizeUnit(unit);
+  
+  if (!normalizedUnit) {
+    console.warn(`Could not normalize unit "${unit}" for ${key}, using value as-is`);
+    return value;
+  }
+  
+  // Calories should be in kcal - handle unit conversion if needed
+  if (key === 'calories') {
+    // Convert cal to kcal (1 kcal = 1000 cal)
+    if (normalizedUnit === 'cal') {
+      return value / 1000; // Convert cal to kcal
+    }
+    // If unit is kcal, keep as is
+    if (normalizedUnit === 'kcal') {
+      return value;
+    }
+    // If unknown unit, assume kcal
+    console.warn(`Unknown calorie unit "${normalizedUnit}" for ${key}, assuming kcal`);
+    return value;
+  }
+  
+  // Handle IU (International Units) conversion for vitamins
+  // IU conversions are based on standard nutritional science values:
+  // - These are approximations and can vary slightly by vitamin form
+  // - The API should prefer metric units (g, mg, µg) when possible
+  if (normalizedUnit === 'iu') {
+    // First, try to find a specific conversion for this nutrient
+    const specificConversion = IU_CONVERSIONS[key];
+    if (specificConversion) {
+      return value * specificConversion.factor;
+    }
+    
+    // If no specific conversion, use generic fallback based on expected unit
+    const expectedUnit = UNITS[key];
+    if (expectedUnit === 'µg' || expectedUnit?.includes('µg')) {
+      const genericConversion = IU_CONVERSIONS.generic_ug;
+      console.warn(`Using generic IU conversion (${genericConversion.factor} ${genericConversion.targetUnit} per IU) for ${key}, which may not be accurate. ${genericConversion.note}`);
+      return value * genericConversion.factor;
+    } else if (expectedUnit === 'mg') {
+      const genericConversion = IU_CONVERSIONS.generic_mg;
+      console.warn(`Using generic IU conversion (${genericConversion.factor} ${genericConversion.targetUnit} per IU) for ${key}, which may not be accurate. ${genericConversion.note}`);
+      return value * genericConversion.factor;
+    }
+    
+    // If unit doesn't match, return as-is
+    console.warn(`Cannot convert IU to expected unit "${expectedUnit}" for ${key}, returning value as-is`);
+    return value;
+  }
+  
+  // Convert input value to milligrams first (common intermediate unit)
+  let valueInMg;
+  if (normalizedUnit === 'g') {
+    valueInMg = value * 1000; // g to mg
+  } else if (normalizedUnit === 'µg') {
+    valueInMg = value / 1000; // µg to mg
+  } else if (normalizedUnit === 'mg') {
+    valueInMg = value; // already in mg
+  } else if (normalizedUnit === 'kg') {
+    valueInMg = value * 1000000; // kg to mg
+  } else {
+    // Unknown unit - log warning and try to infer from expected unit
+    const expectedUnit = UNITS[key];
+    console.warn(`Unknown unit "${normalizedUnit}" (original: "${unit}") for ${key}, expected unit: ${expectedUnit}. Attempting conversion.`);
+    
+    // Try to infer: if expected unit is g and value is small, might be in g already
+    // If expected unit is µg and value is large, might be in mg
+    // Otherwise assume mg
+    if (expectedUnit === 'g' && value < 1000) {
+      valueInMg = value * 1000; // Assume it was in g
+    } else if ((expectedUnit === 'µg' || expectedUnit?.includes('µg')) && value > 1000) {
+      valueInMg = value; // Assume it was in mg
+    } else {
+      valueInMg = value; // Default assumption: mg
+    }
+  }
+  
+  // Now convert from mg to the expected unit for this nutrient
+  const expectedUnit = UNITS[key];
+  
+  // Nutrients that should be in grams
+  if (expectedUnit === 'g') {
+    const result = valueInMg / 1000; // mg to g
+    return isNaN(result) ? value : result;
+  }
+  
+  // Nutrients that should be in micrograms
+  if (expectedUnit === 'µg' || expectedUnit?.includes('µg')) {
+    const result = valueInMg * 1000; // mg to µg
+    return isNaN(result) ? value : result;
+  }
+  
+  // Nutrients that should stay in milligrams
+  return isNaN(valueInMg) ? value : valueInMg;
+}
+
 export default function NutritionAnalyzerApp() {
   const loadFoods = () => {
     const stored = localStorage.getItem('foods');
     if (stored) {
       const storedFoods = JSON.parse(stored);
       const loadedDb = loadFoodDatabase();
+      const loadedUnits = loadFoodUnits(); // Load units by food name
       return storedFoods.map(f => {
         const foodData = loadedDb[f.name];
+        const foodId = Math.random().toString(36).slice(2);
         if (!foodData) {
           // If food not in database, create empty profile
           return {
             ...createEmptyNutrientProfile(),
             name: f.name,
             grams: f.ounces / G_TO_OZ,
-            id: Math.random().toString(36).slice(2)
+            id: foodId
           };
         }
         return {
           ...foodData,
           name: f.name,
           grams: f.ounces / G_TO_OZ,
-          id: Math.random().toString(36).slice(2)
+          id: foodId
         };
       });
     }
@@ -223,6 +632,16 @@ export default function NutritionAnalyzerApp() {
     return stored || 'men';
   };
 
+  const loadFoodUnitWeights = () => {
+    const stored = localStorage.getItem('foodUnitWeights');
+    return stored ? JSON.parse(stored) : {};
+  };
+
+  const loadFoodUnits = () => {
+    const stored = localStorage.getItem('foodUnits');
+    return stored ? JSON.parse(stored) : {};
+  };
+
   const loadFoodDatabase = () => {
     const stored = localStorage.getItem('foodDatabase');
     return stored ? JSON.parse(stored) : {};
@@ -240,22 +659,101 @@ export default function NutritionAnalyzerApp() {
   const [saveListName, setSaveListName] = useState("");
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [showLoadDialog, setShowLoadDialog] = useState(false);
+  const [showDeleteDatabaseDialog, setShowDeleteDatabaseDialog] = useState(false);
+  const [showTextListDialog, setShowTextListDialog] = useState(false);
+  const [textListContent, setTextListContent] = useState("");
   const [currentListName, setCurrentListName] = useState(() => {
     // Check if there's a saved current list name
     return localStorage.getItem('currentListName') || null;
   });
-  const [usdaApiKey, setUsdaApiKey] = useState(() => localStorage.getItem('usdaApiKey') || "");
-  const [usdaQuery, setUsdaQuery] = useState("berries");
-  const [isFetchingUSDA, setIsFetchingUSDA] = useState(false);
-  const [usdaStatus, setUsdaStatus] = useState("");
-  const [fetchedFoods, setFetchedFoods] = useState([]);
-  const [showFoodSelection, setShowFoodSelection] = useState(false);
+  const [showSplash, setShowSplash] = useState(() => {
+    const stored = localStorage.getItem('nutritionSplashDismissed');
+    if (stored === 'false' || stored === null) {
+      return foods.length === 0;
+    }
+    return stored !== 'true';
+  });
+  const [openAiApiKey, setOpenAiApiKey] = useState(() => localStorage.getItem('openAiApiKey') || "");
+  const [nutritionInput, setNutritionInput] = useState("");
+  const [isParsingFoods, setIsParsingFoods] = useState(false);
+  const [parseError, setParseError] = useState("");
+  const [parsedFoodsPreview, setParsedFoodsPreview] = useState([]);
+  const [parsedLinesPreview, setParsedLinesPreview] = useState([]);
+  const [isPreviewStage, setIsPreviewStage] = useState(false);
+  const [foodUnits, setFoodUnits] = useState(() => {
+    // Load units by food name from localStorage
+    const loadedUnitsByName = loadFoodUnits();
+    // Convert to ID-based mapping after foods are loaded (will be done in useEffect)
+    return {};
+  });
+  const [foodUnitWeights, setFoodUnitWeights] = useState(loadFoodUnitWeights);
+  const [apiLogs, setApiLogs] = useState([]);
+  const [showApiLogs, setShowApiLogs] = useState(false);
+  const [rateLimitStatus, setRateLimitStatus] = useState({
+    isRateLimited: false,
+    retryAfter: null,
+    retryCount: 0,
+    isThrottling: false
+  });
+  const [lastRequestTime, setLastRequestTime] = useState(null);
+  const [isWaitingBetweenRequests, setIsWaitingBetweenRequests] = useState(false);
+  
+  // Request queue for sequential processing
+  const requestQueueRef = useRef([]);
+  const isProcessingQueueRef = useRef(false);
+  const lastRequestTimeRef = useRef(null);
 
-  useEffect(() => { localStorage.setItem('foods', JSON.stringify(foods.map(f => ({ name: f.name, ounces: f.grams*G_TO_OZ })))); }, [foods]);
+  useEffect(() => { 
+    localStorage.setItem('foods', JSON.stringify(foods.map(f => ({ 
+      name: f.name, 
+      ounces: f.grams*G_TO_OZ,
+      unit: foodUnits[f.id] || DEFAULT_DISPLAY_UNIT
+    })))); 
+  }, [foods, foodUnits]);
+  
+  // Restore units from localStorage when foods are loaded (mapping by name to ID)
+  // This runs when foods change, but only if foodUnits is empty or doesn't match
+  useEffect(() => {
+    if (foods.length > 0) {
+      const loadedUnitsByName = loadFoodUnits();
+      const restoredUnits = {};
+      foods.forEach(food => {
+        if (loadedUnitsByName[food.name]) {
+          restoredUnits[food.id] = loadedUnitsByName[food.name];
+        }
+      });
+      // Only update if we have units to restore and they differ from current state
+      if (Object.keys(restoredUnits).length > 0) {
+        setFoodUnits(prev => {
+          // Check if we need to update (avoid unnecessary updates)
+          const needsUpdate = Object.keys(restoredUnits).some(id => prev[id] !== restoredUnits[id]);
+          return needsUpdate ? { ...prev, ...restoredUnits } : prev;
+        });
+      }
+    }
+  }, [foods]); // Run when foods change (will restore units from localStorage if available)
+  
+  // Save foodUnits to localStorage (by food name, not ID, since IDs change on reload)
+  useEffect(() => {
+    if (foods.length > 0 && Object.keys(foodUnits).length > 0) {
+      const unitsByName = {};
+      foods.forEach(food => {
+        if (foodUnits[food.id]) {
+          unitsByName[food.name] = foodUnits[food.id];
+        }
+      });
+      localStorage.setItem('foodUnits', JSON.stringify(unitsByName));
+    }
+  }, [foods, foodUnits]);
+  
   useEffect(() => { localStorage.setItem('multiplier', multiplier); }, [multiplier]);
   useEffect(() => { localStorage.setItem('rdaGender', rdaGender); }, [rdaGender]);
   useEffect(() => { localStorage.setItem('foodDatabase', JSON.stringify(foodDatabase)); }, [foodDatabase]);
-  useEffect(() => { localStorage.setItem('usdaApiKey', usdaApiKey); }, [usdaApiKey]);
+  useEffect(() => { localStorage.setItem('openAiApiKey', openAiApiKey); }, [openAiApiKey]);
+  useEffect(() => { localStorage.setItem('foodUnitWeights', JSON.stringify(foodUnitWeights)); }, [foodUnitWeights]);
+  useEffect(() => {
+    localStorage.setItem('nutritionSplashDismissed', showSplash ? 'false' : 'true');
+  }, [showSplash]);
   useEffect(() => {
     if (!currentSelection.name || !foodDatabase[currentSelection.name]) {
       const firstFood = Object.keys(foodDatabase)[0];
@@ -264,6 +762,44 @@ export default function NutritionAnalyzerApp() {
       }
     }
   }, [foodDatabase]);
+  useEffect(() => {
+    if (foods.length > 0) {
+      setShowSplash(false);
+    }
+  }, [foods.length]);
+
+  useEffect(() => {
+    setFoodUnits((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      foods.forEach((food) => {
+        if (!next[food.id]) {
+          next[food.id] = DEFAULT_DISPLAY_UNIT;
+          changed = true;
+        }
+      });
+      Object.keys(next).forEach((id) => {
+        if (!foods.find((food) => food.id === id)) {
+          delete next[id];
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [foods]);
+
+  const resetSplashFlow = () =>
+    resetNutritionSplash({
+      setParsedFoodsPreview,
+      setParsedLinesPreview,
+      setIsPreviewStage,
+      setParseError
+    });
+
+  const handleSkipSplash = () => {
+    resetSplashFlow();
+    setShowSplash(false);
+  };
 
 
   function getTargetUnit(key) {
@@ -292,7 +828,7 @@ export default function NutritionAnalyzerApp() {
     setCurrentSelection({ ...currentSelection, [e.target.name]: e.target.value });
   }
 
-  function addFood() {
+  async function addFood() {
     if (!currentSelection.name || !currentSelection.amount) return;
     const amountValue = parseFloat(currentSelection.amount);
     if (isNaN(amountValue) || amountValue <= 0) {
@@ -304,19 +840,82 @@ export default function NutritionAnalyzerApp() {
       alert("Food not found in database");
       return;
     }
-    const grams = convertToGrams(amountValue, currentSelection.unit);
-    setFoods([...foods, { ...foodData, name: currentSelection.name, grams, id: Math.random().toString(36).slice(2) }]);
-    setCurrentSelection({ ...currentSelection, amount: "" });
+    try {
+      const { grams } = await resolveItemGrams(
+        { name: currentSelection.name, unit: currentSelection.unit, quantity: amountValue }
+      );
+      if (!grams || grams <= 0) {
+        throw new Error("Unable to convert that amount to grams.");
+      }
+      const newFoodId = Math.random().toString(36).slice(2);
+      const selectedUnit = currentSelection.unit || DEFAULT_DISPLAY_UNIT;
+      
+      setFoods([
+        ...foods,
+        { ...foodData, name: currentSelection.name, grams, id: newFoodId }
+      ]);
+      
+      // Save the selected unit for this food
+      setFoodUnits(prev => ({
+        ...prev,
+        [newFoodId]: selectedUnit
+      }));
+      
+      setCurrentSelection({ ...currentSelection, amount: "" });
+    } catch (error) {
+      alert(error.message || "Unable to convert that amount. Try entering grams.");
+    }
   }
 
-  function updateFoodQuantity(id, ounces) {
-    const value = parseFloat(ounces);
+  async function updateFoodQuantity(id, amount, unit = DEFAULT_DISPLAY_UNIT) {
+    const value = parseFloat(amount);
     if (isNaN(value) || value < 0) return;
-    setFoods(foods.map(f => f.id === id ? { ...f, grams: value / G_TO_OZ } : f));
+    const food = foods.find(f => f.id === id);
+    if (!food) return;
+    const normalizedUnit = normalizeUnitName(unit);
+    const overrideWeight = getStoredUnitWeight(food.name, normalizedUnit);
+    const staticWeight = UNIT_TO_GRAMS[normalizedUnit];
+    if (staticWeight || overrideWeight) {
+      const gramsPerUnit = overrideWeight || staticWeight;
+      const grams = gramsPerUnit ? gramsPerUnit * value : convertToGrams(value, unit);
+      setFoods(foods.map(f => f.id === id ? { ...f, grams } : f));
+      return;
+    }
+    if (normalizedUnit === "whole") {
+      try {
+        const { grams } = await resolveItemGrams(
+          { name: food.name, unit, quantity: value }
+        );
+        if (!grams || grams <= 0) throw new Error("Unable to convert");
+        setFoods(foods.map(f => f.id === id ? { ...f, grams } : f));
+        return;
+      } catch (error) {
+        alert(error.message || "Unable to convert 'one whole'. Try entering grams instead.");
+        return;
+      }
+    }
+    alert("Conversion data for that unit is unavailable. Please enter grams.");
   }
 
   function removeFood(id) {
     setFoods(foods.filter(f => f.id !== id));
+  }
+
+  async function handleFoodUnitChange(id, unit) {
+    setFoodUnits(prev => ({ ...prev, [id]: unit }));
+    const normalizedUnit = normalizeUnitName(unit);
+    if (normalizedUnit === "whole") {
+      const food = foods.find(f => f.id === id);
+      if (food && !getStoredUnitWeight(food.name, normalizedUnit)) {
+        try {
+          await resolveItemGrams(
+            { name: food.name, unit: normalizedUnit, quantity: 1 }
+          );
+        } catch (error) {
+          console.warn("Unable to resolve weight for unit 'whole':", error);
+        }
+      }
+    }
   }
 
   function formatNumber(num, decimals = 2) {
@@ -338,98 +937,671 @@ export default function NutritionAnalyzerApp() {
     return `1:${n}`;
   }
 
-  const mapUsdaFoodsToDatabase = (usdaFoods, existingDb) => {
-    const mapped = {};
-    if (!Array.isArray(usdaFoods)) return mapped;
-    usdaFoods.forEach((food) => {
-      const rawName = (food.description || "").trim();
-      const baseName = rawName || `FDC ${food.fdcId}`;
-      let name = baseName;
-      let suffix = 2;
-      while (mapped[name] || existingDb[name]) {
-        name = `${baseName} (${suffix++})`;
-      }
-      const profile = {
-        ...createEmptyNutrientProfile(),
-        name,
-        grams: food.servingSizeUnit?.toLowerCase() === 'g' && food.servingSize ? food.servingSize : 100,
-        id: `usda-${food.fdcId}`
-      };
-      (food.foodNutrients || []).forEach((nutrient) => {
-        const key = NUTRIENT_NAME_MAP[nutrient.nutrientName];
-        if (!key) return;
-        const targetUnit = getTargetUnit(key);
-        const normalized = convertToTargetUnit(
-          nutrient.value ?? nutrient.amount ?? 0,
-          nutrient.unitName,
-          targetUnit,
-          key
-        );
-        if (!Number.isNaN(normalized)) {
-          profile[key] = normalized;
+  function getStoredUnitWeight(foodName, unit, weightsMapOverride = null) {
+    if (!foodName || !unit) return null;
+    const source = weightsMapOverride || foodUnitWeights;
+    const normalizedName = normalizeFoodName(foodName);
+    const normalizedUnit = normalizeUnitName(unit);
+    return source?.[normalizedName]?.[normalizedUnit] || null;
+  }
+
+  function rememberUnitWeight(foodName, unit, gramsPerUnit, weightsMapOverride = null) {
+    if (!foodName || !unit || !gramsPerUnit || gramsPerUnit <= 0) return false;
+    const normalizedName = normalizeFoodName(foodName);
+    const normalizedUnit = normalizeUnitName(unit);
+    const targetMap = weightsMapOverride;
+    if (targetMap) {
+      const existing = targetMap[normalizedName]?.[normalizedUnit];
+      if (existing && Math.abs(existing - gramsPerUnit) < 0.5) return false;
+      if (!targetMap[normalizedName]) targetMap[normalizedName] = {};
+      targetMap[normalizedName][normalizedUnit] = gramsPerUnit;
+      return true;
+    }
+    let changed = false;
+    setFoodUnitWeights(prev => {
+      const existing = prev[normalizedName]?.[normalizedUnit];
+      if (existing && Math.abs(existing - gramsPerUnit) < 0.5) return prev;
+      changed = true;
+      return {
+        ...prev,
+        [normalizedName]: {
+          ...(prev[normalizedName] || {}),
+          [normalizedUnit]: gramsPerUnit
         }
-      });
-      mapped[name] = profile;
+      };
     });
-    return mapped;
+    return changed;
+  }
+
+  // Process request queue sequentially with 21-second delay
+  const processRequestQueue = async () => {
+    if (isProcessingQueueRef.current) {
+      return; // Already processing
+    }
+    
+    isProcessingQueueRef.current = true;
+    const REQUEST_DELAY_MS = 21000; // 21 seconds between requests
+    
+    while (requestQueueRef.current.length > 0) {
+      const requestItem = requestQueueRef.current.shift();
+      
+      // Wait 21 seconds since last request (unless this is the first request)
+      if (lastRequestTimeRef.current !== null) {
+        const timeSinceLastRequest = Date.now() - lastRequestTimeRef.current;
+        if (timeSinceLastRequest < REQUEST_DELAY_MS) {
+          const waitTime = REQUEST_DELAY_MS - timeSinceLastRequest;
+          setIsWaitingBetweenRequests(true);
+          
+          // Log the throttle wait
+          const throttleLog = {
+            id: Date.now() + Math.random(),
+            timestamp: new Date().toISOString(),
+            type: 'throttle',
+            data: {
+              waitTimeMs: waitTime,
+              waitTimeSeconds: (waitTime / 1000).toFixed(1)
+            }
+          };
+          setApiLogs(prev => [...prev, throttleLog]);
+          
+          // Wait for the remaining time
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          setIsWaitingBetweenRequests(false);
+        }
+      }
+      
+      // Update last request time
+      lastRequestTimeRef.current = Date.now();
+      setLastRequestTime(Date.now());
+      
+      // Execute the actual request
+      try {
+        const result = await requestItem.execute();
+        requestItem.resolve(result);
+      } catch (error) {
+        requestItem.reject(error);
+      }
+    }
+    
+    isProcessingQueueRef.current = false;
   };
 
-  async function fetchUsdaFoods(e) {
+  const callOpenAI = async (messages, apiKey, model = "gpt-5", responseFormat = null, retryCount = 0) => {
+    const MAX_RETRIES = 5;
+    const INITIAL_RETRY_DELAY = 1000; // 1 second
+    
+    // If this is a retry, execute immediately (retries have their own delay logic)
+    if (retryCount > 0) {
+      // Retries bypass the queue and use their own delay
+      return executeOpenAIRequest(messages, apiKey, model, responseFormat, retryCount);
+    }
+    
+    // For new requests, add to queue and process sequentially
+    return new Promise((resolve, reject) => {
+      requestQueueRef.current.push({
+        execute: () => executeOpenAIRequest(messages, apiKey, model, responseFormat, 0),
+        resolve,
+        reject
+      });
+      
+      // Start processing if not already processing
+      processRequestQueue();
+    });
+  };
+
+  const executeOpenAIRequest = async (messages, apiKey, model = "gpt-5", responseFormat = null, retryCount = 0) => {
+    const MAX_RETRIES = 5;
+    const INITIAL_RETRY_DELAY = 1000; // 1 second
+    
+    const body = {
+      model: model,
+      messages
+    };
+    // Only include temperature for gpt-4o-mini
+    if (body.model === "gpt-4o-mini") {
+      body.temperature = 0;
+    }
+    if (responseFormat) {
+      body.response_format = responseFormat;
+    }
+    
+    // Log the request
+    const requestLog = {
+      id: Date.now() + Math.random(),
+      timestamp: new Date().toISOString(),
+      type: 'request',
+      data: {
+        model: body.model,
+        temperature: body.temperature,
+        messages: messages,
+        response_format: responseFormat
+      },
+      retryAttempt: retryCount
+    };
+    setApiLogs(prev => [...prev, requestLog]);
+    
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`
+      },
+      body: JSON.stringify(body)
+    });
+    
+    const responseData = await response.json();
+    
+    // Log the response
+    const responseLog = {
+      id: Date.now() + Math.random(),
+      timestamp: new Date().toISOString(),
+      type: 'response',
+      status: response.status,
+      statusText: response.statusText,
+      data: responseData
+    };
+    setApiLogs(prev => [...prev, responseLog]);
+    
+    // Handle rate limiting (429)
+    if (response.status === 429) {
+      const retryAfterHeader = response.headers.get('retry-after');
+      const retryAfter = retryAfterHeader ? parseInt(retryAfterHeader, 10) : null;
+      
+      setRateLimitStatus({
+        isRateLimited: true,
+        retryAfter: retryAfter,
+        retryCount: retryCount + 1,
+        isThrottling: true
+      });
+      
+      if (retryCount < MAX_RETRIES) {
+        // Calculate delay: use retry-after if available, otherwise exponential backoff
+        const delay = retryAfter 
+          ? retryAfter * 1000 // Convert seconds to milliseconds
+          : INITIAL_RETRY_DELAY * Math.pow(2, retryCount); // Exponential backoff
+        
+        // Log the retry attempt
+        const retryLog = {
+          id: Date.now() + Math.random(),
+          timestamp: new Date().toISOString(),
+          type: 'retry',
+          data: {
+            retryCount: retryCount + 1,
+            delayMs: delay,
+            retryAfter: retryAfter
+          }
+        };
+        setApiLogs(prev => [...prev, retryLog]);
+        
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, delay));
+        
+        // Clear throttling status after delay
+        setRateLimitStatus(prev => ({ ...prev, isThrottling: false }));
+        
+        // Retry the request (retries bypass queue and execute directly)
+        return executeOpenAIRequest(messages, apiKey, model, responseFormat, retryCount + 1);
+      } else {
+        // Max retries exceeded
+        setRateLimitStatus(prev => ({ ...prev, isThrottling: false }));
+        const errorText = responseData.error?.message || JSON.stringify(responseData);
+        throw new Error(`Rate limit exceeded. Maximum retries (${MAX_RETRIES}) reached. ${errorText}`);
+      }
+    }
+    
+    // Clear rate limit status on successful response
+    if (response.ok) {
+      setRateLimitStatus({
+        isRateLimited: false,
+        retryAfter: null,
+        retryCount: 0,
+        isThrottling: false
+      });
+    }
+    
+    if (!response.ok) {
+      const errorText = responseData.error?.message || JSON.stringify(responseData);
+      throw new Error(`OpenAI request failed (${response.status}): ${errorText}`);
+    }
+    
+    const content = responseData.choices?.[0]?.message?.content?.trim();
+    if (!content) {
+      throw new Error("OpenAI response did not include any content.");
+    }
+    return content;
+  };
+
+  const parseFoodsWithOpenAI = async (inputText) => {
+    const systemPrompt = "You are NutritionGPT, an expert nutrition analyst. You receive free-form meal descriptions and extract discrete foods with quantities.";
+    const userPrompt = `
+Please read the following text and convert it into structured foods with numeric quantities and standardized units.
+
+Instructions:
+- Return JSON with a top-level "foods" array.
+- Each food needs { "name": string, "quantity": number, "unit": string }.
+- Acceptable units: g, gram, grams, oz, ounce, ounces, cup, cups, tbsp, tablespoon, tsp, teaspoon, lb, pound.
+- Normalize plural units to singular (e.g., "cups" -> "cup").
+- Quantities should be positive numbers. If a quantity is missing, infer a reasonable serving (e.g., 1 cup).
+- Example input line: "2 cups cooked lentils".
+
+Input:
+${inputText.trim()}
+`;
+    const content = await callOpenAI(
+      [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
+      ],
+      openAiApiKey,
+      "gpt-5",
+      { type: "json_object" }
+    );
+    const parsed = safeJsonParse(content);
+    const foodsArray = Array.isArray(parsed?.foods) ? parsed.foods : Array.isArray(parsed) ? parsed : [];
+    return foodsArray
+      .map((item) => ({
+        name: (item.name || item.food || "").trim(),
+        quantity: parseFloat(item.quantity ?? item.amount ?? item.qty ?? 0),
+        unit: (item.unit || item.units || "g").toString().trim().toLowerCase()
+      }))
+      .filter((item) => item.name && item.quantity > 0);
+  };
+
+  const fetchNutritionProfileFromOpenAI = async (foodItems) => {
+    // Handle both single item and array of items
+    const items = Array.isArray(foodItems) ? foodItems : [foodItems];
+    const foodNames = items.map(item => item.name);
+    
+    const systemPrompt = `You are a nutrition data assistant.
+
+- Given a list of food names (comma-separated), output JSON only
+- For a single food, return: { "name": "food name", "serving_size": "amount unit", "per_serving": { "nutrientKey": "amount unit" } }
+- For multiple foods, return an array: [{ "name": "food1", ... }, { "name": "food2", ... }]
+
+- Units: Prefer metric units (g, mg, µg, mcg, kcal) over IU when possible. You can use IU only if metric units are not available.
+- Every value must be a string: "number unit" (e.g., "250 kcal", "5.2 g", "15 µg", "100 milligrams")  
+- serving_size must specify the quantity the per_serving values represent (e.g., "100 g", "1 cup", "1 oz", "250 ml")
+- per_serving values should match the serving_size you specify
+- The app will automatically convert units as needed (including IU to metric when necessary)
+- Include every one of these nutrients: calories, protein, fat, carbs, omega3, omega6, zinc, b12, magnesium, vitaminE, vitaminK, vitaminA, monounsaturated, selenium, iron, vitaminD, b1, choline, calcium, potassium, iodine, vitaminC, folate
+- if the value is not known, give your best guess
+- Output only JSON, no explanations or extra text`;
+    
+    const userPrompt = foodNames.join(", ");
+    // Use json_object only for single item, allow array for multiple items
+    const responseFormat = items.length === 1 ? { type: "json_object" } : null;
+    const content = await callOpenAI(
+      [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
+      ],
+      openAiApiKey,
+      "gpt-5",
+      responseFormat
+    );
+    const parsed = safeJsonParse(content);
+    
+    // Handle various response formats: array, object with array property, or single object
+    let results = [];
+    if (Array.isArray(parsed)) {
+      results = parsed;
+    } else if (parsed && Array.isArray(parsed.foods)) {
+      results = parsed.foods;
+    } else if (parsed && Array.isArray(parsed.items)) {
+      results = parsed.items;
+    } else if (parsed) {
+      results = [parsed];
+    }
+    
+    // Process each result and map back to original items
+    const processedResults = results.map((result, index) => {
+      const originalItem = items[index] || items[0]; // Fallback to first item if index out of bounds
+      const name = titleCase(result?.name || originalItem.name);
+      
+      // Parse serving_size from API response
+      const servingSizeStr = result?.serving_size || result?.servingSize || result?.service_size || result?.serviceSize || "100 g";
+      const servingSizeParsed = parseAmountAndUnit(servingSizeStr);
+      const servingSizeAmount = servingSizeParsed?.amount || 100;
+      const servingSizeUnit = servingSizeParsed?.unit || "g";
+      
+      // Convert serving_size to grams for scaling calculations
+      const servingSizeInGrams = convertToGrams(servingSizeAmount, servingSizeUnit);
+      
+      const perServing = result?.per_serving || result?.per_100g || result?.per_ounce || result?.nutrients || {};
+      const profile = createEmptyNutrientProfile();
+      
+      Object.keys(profile).forEach((key) => {
+        // Skip omega3_6_ratio - we calculate it in the app, not from API
+        if (key === 'omega3_6_ratio') return;
+        const val = perServing[key];
+        
+        // Parse amount and unit from the response (handles various formats)
+        const parsedValue = parseAmountAndUnit(val);
+        if (parsedValue && !isNaN(parsedValue.amount)) {
+          const originalAmount = parsedValue.amount;
+          const originalUnit = parsedValue.unit;
+          
+          // Validate that we have a unit (or can infer one)
+          if (!originalUnit) {
+            // If no unit provided, we can't safely convert - skip this value
+            console.warn(`No unit provided for ${key} in API response, value: ${originalAmount}`);
+            return;
+          }
+          
+          // Convert to expected unit for this nutrient
+          // The conversion function handles the unit transformation
+          const expectedUnit = UNITS[key];
+          const convertedValue = convertToExpectedUnit(key, originalAmount, originalUnit);
+          
+          // Validate the conversion result
+          if (convertedValue === null || convertedValue === undefined || isNaN(convertedValue)) {
+            console.warn(`Failed to convert ${key} from ${originalAmount} ${originalUnit} to ${expectedUnit}`);
+            return;
+          }
+          
+          // Log conversion for debugging (can be removed in production)
+          if (originalUnit && originalUnit.toLowerCase() !== expectedUnit?.toLowerCase()) {
+            console.log(`Converted ${key}: ${originalAmount} ${originalUnit} → ${convertedValue} ${expectedUnit}`);
+          }
+          
+          // Store the converted value (this is per serving_size, in the expected unit)
+          // We'll scale by serving_size when calculating totals
+          profile[key] = convertedValue;
+        }
+      });
+      
+      // Store serving_size information with the profile
+      profile._servingSize = {
+        amount: servingSizeAmount,
+        unit: servingSizeUnit,
+        grams: servingSizeInGrams
+      };
+      
+      return { name, nutrients: profile, originalItem };
+    });
+    
+    // Return single result if single item was passed, otherwise return array
+    return Array.isArray(foodItems) ? processedResults : processedResults[0];
+  };
+
+  const fetchWholeUnitWeight = async (foodItem) => {
+    const descriptor = `${foodItem.quantity || 1} ${foodItem.unit || ""} ${foodItem.name}`.trim();
+    const systemPrompt = "You are NutritionGPT, a registered dietitian who provides precise ingredient weights.";
+    const userPrompt = `
+Determine the average edible weight in grams for ONE whole "${foodItem.name}" as described.
+
+Requirements:
+- Respond with strictly JSON: { "grams_per_unit": number }.
+- grams_per_unit must be a positive number representing the mass of a single whole item.
+- Honor size descriptors (e.g., large, medium), preparation (peeled, cooked), and food type.
+- Use established references (USDA, standard culinary references) when possible.
+
+Context provided: ${descriptor}
+`;
+    const content = await callOpenAI(
+      [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
+      ],
+      openAiApiKey,
+      "gpt-5",
+      { type: "json_object" }
+    );
+    const parsed = safeJsonParse(content);
+    const grams = parseFloat(parsed?.grams_per_unit ?? parsed?.grams ?? 0);
+    if (!grams || grams <= 0) {
+      throw new Error("OpenAI did not return a grams_per_unit value.");
+    }
+    return grams;
+  };
+
+  async function resolveItemGrams(foodItem, weightsMapOverride = null, onWeightsChanged = null) {
+    const normalizedUnit = normalizeUnitName(foodItem.unit || "g");
+    const quantity = foodItem.quantity && foodItem.quantity > 0 ? foodItem.quantity : 1;
+    const staticWeight = UNIT_TO_GRAMS[normalizedUnit];
+    if (staticWeight) {
+      return { grams: staticWeight * quantity, gramsPerUnit: staticWeight, unitKey: normalizedUnit };
+    }
+    const storedWeight = getStoredUnitWeight(foodItem.name, normalizedUnit, weightsMapOverride);
+    if (storedWeight) {
+      return { grams: storedWeight * quantity, gramsPerUnit: storedWeight, unitKey: normalizedUnit };
+    }
+    if (normalizedUnit === "whole") {
+      const gramsPerUnit = await fetchWholeUnitWeight(foodItem);
+      const changed = rememberUnitWeight(foodItem.name, normalizedUnit, gramsPerUnit, weightsMapOverride);
+      if (changed && typeof onWeightsChanged === "function") onWeightsChanged();
+      return { grams: gramsPerUnit * quantity, gramsPerUnit, unitKey: normalizedUnit };
+    }
+    return { grams: convertToGrams(quantity, normalizedUnit), gramsPerUnit: null, unitKey: normalizedUnit };
+  }
+
+  const generateUniqueName = (baseName, dbState) => {
+    const safeName = (baseName || "Food Item").trim() || "Food Item";
+    let candidate = safeName;
+    let suffix = 2;
+    while (dbState[candidate]) {
+      candidate = `${safeName} (${suffix++})`;
+    }
+    return candidate;
+  };
+
+  async function handleNutritionSubmit(e) {
     if (e) e.preventDefault();
-    if (!usdaApiKey) {
-      alert("Please enter your USDA API key (https://api.nal.usda.gov/).");
+    if (!openAiApiKey) {
+      setParseError("Please enter your OpenAI API key.");
       return;
     }
-    setIsFetchingUSDA(true);
-    setUsdaStatus("Contacting USDA FoodData Central...");
+    if (!nutritionInput.trim()) {
+      setParseError("Please describe at least one food.");
+      return;
+    }
+    setIsParsingFoods(true);
+    setParseError("");
     try {
-      const response = await fetch(`https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${usdaApiKey}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          generalSearchInput: usdaQuery || "berries",
-          pageSize: 50,
-          dataType: ["Survey (FNDDS)", "SR Legacy", "Foundation"]
-        })
+      const parsedFoods = await parseFoodsWithOpenAI(nutritionInput.trim());
+      if (!parsedFoods.length) {
+        throw new Error("NutritionGPT did not recognize any foods in your input.");
+      }
+      const lines = splitInputLines(nutritionInput.trim());
+      const lineMappings = (lines.length ? lines : ["All entries"]).map((line, idx) => ({
+        id: `line-${idx}`,
+        line,
+        foods: []
+      }));
+      const leftovers = [];
+      parsedFoods.forEach((food) => {
+        const token = (food.name || "").split(/\s+/)[0]?.toLowerCase() || "";
+        const matchIndex = lineMappings.findIndex(({ line }) =>
+          token && line.toLowerCase().includes(token)
+        );
+        if (matchIndex >= 0) {
+          lineMappings[matchIndex].foods.push(food);
+        } else {
+          leftovers.push(food);
+        }
       });
-      if (!response.ok) {
-        throw new Error(`Request failed (${response.status})`);
+      if (leftovers.length) {
+        lineMappings.push({
+          id: "unmatched",
+          line: "Additional items",
+          foods: leftovers
+        });
       }
-      const data = await response.json();
-      if (!data.foods || !data.foods.length) {
-        setUsdaStatus("No foods returned for that query.");
-        return;
-      }
-      // Store fetched foods for user selection
-      const mapped = mapUsdaFoodsToDatabase(data.foods, foodDatabase);
-      setFetchedFoods(Object.entries(mapped).map(([name, profile]) => ({
-        name,
-        profile,
-        description: data.foods.find(f => {
-          const foodName = (f.description || "").trim() || `FDC ${f.fdcId}`;
-          return foodName === name || foodName.startsWith(name.split(' (')[0]);
-        })?.description || name
-      })));
-      setUsdaStatus(`Found ${data.foods.length} foods. Please select one to add.`);
-      setShowFoodSelection(true);
+      setParsedFoodsPreview(parsedFoods);
+      setParsedLinesPreview(lineMappings);
+      setIsPreviewStage(true);
     } catch (error) {
-      setUsdaStatus(`USDA fetch failed: ${error.message}`);
+      setParseError(error.message || "NutritionGPT could not process your request.");
     } finally {
-      setIsFetchingUSDA(false);
+      setIsParsingFoods(false);
     }
   }
 
-  function addSelectedFood(foodName) {
-    const selectedFood = fetchedFoods.find(f => f.name === foodName);
-    if (!selectedFood) return;
-    
-    setFoodDatabase((prev) => {
-      const updated = { ...prev, [foodName]: selectedFood.profile };
-      return updated;
-    });
-    setShowFoodSelection(false);
-    setFetchedFoods([]);
-    setUsdaStatus(`Added "${foodName}" to database.`);
+  async function finalizeNutritionImport() {
+    if (!parsedFoodsPreview.length) {
+      setParseError("No parsed foods available to import.");
+      return;
+    }
+    setIsParsingFoods(true);
+    setParseError("");
+    try {
+      const dbUpdates = {};
+      const newFoods = [];
+      const failedFoods = [];
+      const unitWeightCache = JSON.parse(JSON.stringify(foodUnitWeights || {}));
+      let unitWeightCacheChanged = false;
+      const markWeightsChanged = () => {
+        unitWeightCacheChanged = true;
+      };
+
+      // First pass: resolve weights and identify foods that need nutrition data
+      const itemsNeedingNutrition = [];
+      const itemData = [];
+      
+      for (const item of parsedFoodsPreview) {
+        try {
+          const { grams, gramsPerUnit, unitKey } = await resolveItemGrams(
+            item,
+            unitWeightCache,
+            markWeightsChanged
+          );
+          if (!grams || grams <= 0) {
+            throw new Error("Unable to determine weight for this item.");
+          }
+
+          const mergedDb = { ...foodDatabase, ...dbUpdates };
+          const baseName = titleCase(item.name);
+          let foodName = findFoodKeyInDatabase(baseName, mergedDb) || baseName;
+          let nutrientProfile = mergedDb[foodName];
+
+          itemData.push({
+            item,
+            grams,
+            gramsPerUnit,
+            unitKey,
+            baseName,
+            foodName,
+            nutrientProfile
+          });
+
+          if (!nutrientProfile) {
+            itemsNeedingNutrition.push(item);
+          }
+        } catch (error) {
+          console.error("Failed to resolve weight for", item.name, error);
+          failedFoods.push(titleCase(item.name));
+        }
+      }
+
+      // Batch fetch nutrition data for all foods that need it
+      if (itemsNeedingNutrition.length > 0) {
+        try {
+          const profiles = await fetchNutritionProfileFromOpenAI(itemsNeedingNutrition);
+          const profileArray = Array.isArray(profiles) ? profiles : [profiles];
+          
+          // Create a map of original item names to profiles
+          const profileMap = new Map();
+          profileArray.forEach((profile, index) => {
+            const originalItem = itemsNeedingNutrition[index];
+            if (originalItem && profile) {
+              profileMap.set(originalItem.name.toLowerCase(), profile);
+            }
+          });
+
+          // Update itemData with nutrition profiles
+          itemData.forEach(data => {
+            if (!data.nutrientProfile) {
+              const profileResult = profileMap.get(data.item.name.toLowerCase());
+              if (profileResult && profileResult.nutrients) {
+                const resolvedName = titleCase(profileResult.name || data.foodName);
+                const mergedDb = { ...foodDatabase, ...dbUpdates };
+                const conflictKey = findFoodKeyInDatabase(resolvedName, mergedDb);
+                data.foodName = conflictKey || resolvedName;
+                if (mergedDb[data.foodName]) {
+                  data.foodName = generateUniqueName(resolvedName, mergedDb);
+                }
+                // Store the entire nutrients profile including serving_size information
+                // profileResult.nutrients is the profile object which includes _servingSize
+                data.nutrientProfile = profileResult.nutrients;
+                dbUpdates[data.foodName] = profileResult.nutrients; // This includes _servingSize if present
+              }
+            }
+          });
+        } catch (error) {
+          console.error("Failed to fetch nutrition data", error);
+          // Mark all items needing nutrition as failed
+          itemsNeedingNutrition.forEach(item => {
+            if (!failedFoods.includes(titleCase(item.name))) {
+              failedFoods.push(titleCase(item.name));
+            }
+          });
+        }
+      }
+
+      // Second pass: create food entries
+      const newFoodUnits = {};
+      for (const data of itemData) {
+        try {
+          if (!data.nutrientProfile) {
+            throw new Error("Nutrition data missing for this food.");
+          }
+
+          if (data.gramsPerUnit && data.unitKey) {
+            if (rememberUnitWeight(data.foodName, data.unitKey, data.gramsPerUnit, unitWeightCache)) {
+              markWeightsChanged();
+            }
+          }
+
+          const foodId = generateId();
+          newFoods.push({
+            ...data.nutrientProfile,
+            name: data.foodName,
+            grams: data.grams,
+            id: foodId
+          });
+          
+          // Save the unit for this food (use the parsed unit from itemData)
+          if (data.unitKey) {
+            newFoodUnits[foodId] = data.unitKey;
+          } else if (data.item.unit) {
+            // Fallback to the unit from the parsed item
+            newFoodUnits[foodId] = normalizeUnitName(data.item.unit) || DEFAULT_DISPLAY_UNIT;
+          } else {
+            newFoodUnits[foodId] = DEFAULT_DISPLAY_UNIT;
+          }
+        } catch (error) {
+          console.error("Failed to import", data.item.name, error);
+          if (!failedFoods.includes(titleCase(data.item.name))) {
+            failedFoods.push(titleCase(data.item.name));
+          }
+        }
+      }
+      if (!newFoods.length) {
+        throw new Error("Could not map any foods to quantities.");
+      }
+      setFoodDatabase((prev) => ({ ...prev, ...dbUpdates }));
+      setFoods(newFoods);
+      setFoodUnits(prev => ({ ...prev, ...newFoodUnits }));
+      if (unitWeightCacheChanged) {
+        setFoodUnitWeights(unitWeightCache);
+      }
+      setCurrentListName(null);
+      localStorage.removeItem('currentListName');
+      setShowSplash(false);
+      setNutritionInput("");
+      resetSplashFlow();
+      if (failedFoods.length) {
+        alert(
+          `Some foods could not be imported because we couldn't obtain reliable data:\n- ${failedFoods.join(
+            "\n- "
+          )}\nPlease refine those entries and try again.`
+        );
+      }
+    } catch (error) {
+      setParseError(error.message || "NutritionGPT could not process your request.");
+    } finally {
+      setIsParsingFoods(false);
+    }
   }
 
   function saveCurrentList(listName = null) {
@@ -445,7 +1617,11 @@ export default function NutritionAnalyzerApp() {
       return;
     }
     const listData = {
-      foods: foods.map(f => ({ name: f.name, ounces: f.grams * G_TO_OZ })),
+      foods: foods.map(f => ({ 
+        name: f.name, 
+        ounces: f.grams * G_TO_OZ,
+        unit: foodUnits[f.id] || DEFAULT_DISPLAY_UNIT
+      })),
       multiplier: multiplier,
       rdaGender: rdaGender,
       savedAt: new Date().toISOString()
@@ -491,7 +1667,17 @@ export default function NutritionAnalyzerApp() {
       };
     });
     
+    // Restore units for loaded foods
+    const restoredUnits = {};
+    loadedFoods.forEach((food, index) => {
+      const savedFood = listData.foods[index];
+      if (savedFood.unit) {
+        restoredUnits[food.id] = savedFood.unit;
+      }
+    });
+    
     setFoods(loadedFoods);
+    setFoodUnits(restoredUnits);
     if (listData.multiplier) setMultiplier(listData.multiplier);
     if (listData.rdaGender) setRdaGender(listData.rdaGender);
     setCurrentListName(listName);
@@ -512,9 +1698,59 @@ export default function NutritionAnalyzerApp() {
     }
   }
 
+  function deleteFoodFromDatabase(foodName) {
+    const updated = { ...foodDatabase };
+    delete updated[foodName];
+    setFoodDatabase(updated);
+    // If this food is currently selected, clear the selection
+    if (currentSelection.name === foodName) {
+      const remainingFoods = Object.keys(updated);
+      setCurrentSelection(prev => ({ ...prev, name: remainingFoods[0] || "" }));
+    }
+  }
+
+  function deleteAllFoodsFromDatabase() {
+    setFoodDatabase({});
+    setCurrentSelection(prev => ({ ...prev, name: "" }));
+  }
+
+  function generateTextList() {
+    if (foods.length === 0) {
+      alert("No foods to list.");
+      return;
+    }
+    
+    const lines = foods.map(f => {
+      const unit = foodUnits[f.id] || DEFAULT_DISPLAY_UNIT;
+      const overrideWeight = getStoredUnitWeight(f.name, unit);
+      const value = gramsToUnit(f.grams, unit, overrideWeight || undefined);
+      const formatted = Number.isFinite(value) ? value.toFixed(1) : "0";
+      const unitLabel = UNIT_OPTIONS.find(opt => opt.value === unit)?.label || unit;
+      return `${formatted} ${unitLabel} ${f.name}`;
+    });
+    
+    const text = lines.join('\n');
+    setTextListContent(text);
+    setShowTextListDialog(true);
+  }
+
+  async function copyTextListToClipboard() {
+    try {
+      await navigator.clipboard.writeText(textListContent);
+      alert("Text list copied to clipboard!");
+    } catch (err) {
+      console.error("Failed to copy to clipboard:", err);
+      alert("Failed to copy to clipboard. Please select and copy manually.");
+    }
+  }
+
   function exportToJSON() {
     const data = {
-      foods: foods.map(f => ({ name: f.name, ounces: f.grams * G_TO_OZ })),
+      foods: foods.map(f => ({ 
+        name: f.name, 
+        ounces: f.grams * G_TO_OZ,
+        unit: foodUnits[f.id] || DEFAULT_DISPLAY_UNIT
+      })),
       multiplier: multiplier,
       rdaGender: rdaGender,
       exportedAt: new Date().toISOString()
@@ -561,8 +1797,18 @@ export default function NutritionAnalyzerApp() {
           };
         });
         
+        // Restore units for imported foods
+        const restoredUnits = {};
+        importedFoods.forEach((food, index) => {
+          const importedFood = data.foods[index];
+          if (importedFood.unit) {
+            restoredUnits[food.id] = importedFood.unit;
+          }
+        });
+        
         if (window.confirm("This will replace your current food list. Continue?")) {
           setFoods(importedFoods);
+          setFoodUnits(restoredUnits);
           if (data.multiplier) setMultiplier(data.multiplier);
           if (data.rdaGender) setRdaGender(data.rdaGender);
           // Clear current list name since this is imported data
@@ -581,10 +1827,35 @@ export default function NutritionAnalyzerApp() {
   function calculateTotals() {
     const totals = Object.keys(UNITS).filter(k => k !== 'omega3_6_ratio').reduce((acc, key) => ({ ...acc, [key]: 0 }), {});
     foods.forEach(f => {
-      const ounces = f.grams * G_TO_OZ * multiplier;
+      // Get serving_size from the food item or database
+      // Serving size tells us what quantity the nutrient values represent
+      let servingSizeInGrams = 100; // Default to 100g for backward compatibility
+      
+      if (f._servingSize && f._servingSize.grams) {
+        // Serving size is stored on the food item (from database spread)
+        servingSizeInGrams = f._servingSize.grams;
+      } else {
+        // Check database for serving_size (also check old _serviceSize for backward compatibility)
+        const baseFood = foodDatabase[f.name];
+        if (baseFood) {
+          if (baseFood._servingSize && baseFood._servingSize.grams) {
+            servingSizeInGrams = baseFood._servingSize.grams;
+          } else if (baseFood._serviceSize && baseFood._serviceSize.grams) {
+            // Backward compatibility with old _serviceSize
+            servingSizeInGrams = baseFood._serviceSize.grams;
+          }
+        }
+      }
+      
+      // Scale by user's consumed grams relative to the serving_size
+      // Example: If API says "100 g" has 50mg protein, and user consumed 200g, 
+      // then scaleFactor = 200/100 = 2.0, so we get 50mg * 2.0 = 100mg
+      const userGrams = f.grams * multiplier;
+      const scaleFactor = userGrams / servingSizeInGrams;
+      
       for (const key in UNITS) {
         if (key !== 'omega3_6_ratio') {
-          totals[key] += ((f[key] || 0) * ounces);
+          totals[key] += ((f[key] || 0) * scaleFactor);
         }
       }
     });
@@ -613,15 +1884,245 @@ export default function NutritionAnalyzerApp() {
     return ((totals[key]/RDA[key])*100).toFixed(1); 
   }
 
+  if (showSplash) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 text-white flex items-center justify-center p-6">
+        <div className="bg-white text-gray-900 rounded-2xl shadow-2xl p-8 max-w-3xl w-full space-y-6">
+          <div>
+            <p className="text-sm uppercase tracking-wide text-indigo-500 font-semibold">Introducing</p>
+            <h1 className="text-4xl font-bold text-slate-900 mt-2">NutritionGPT</h1>
+            <p className="text-base text-slate-600 mt-3">
+              Paste the foods you ate today—one per line—and let NutritionGPT parse, normalize, and load precise nutrient data into the analyzer automatically.
+            </p>
+          </div>
+          {!isPreviewStage ? (
+            <form onSubmit={handleNutritionSubmit} className="space-y-4">
+              <label className="block">
+                <span className="text-sm font-medium text-slate-700">Foods &amp; quantities</span>
+                <textarea
+                  value={nutritionInput}
+                  onChange={(e) => setNutritionInput(e.target.value)}
+                  placeholder={"1 cup cooked lentils\n2 tbsp olive oil\n6 oz grilled salmon"}
+                  rows={8}
+                  className="mt-2 w-full border border-slate-200 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-sm"
+                />
+              </label>
+              <label className="block">
+                <span className="text-sm font-medium text-slate-700">OpenAI API key</span>
+                <input
+                  type="password"
+                  value={openAiApiKey}
+                  onChange={(e) => setOpenAiApiKey(e.target.value)}
+                  placeholder="sk-..."
+                  className="mt-2 w-full border border-slate-200 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </label>
+              {parseError && (
+                <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg p-3">
+                  {parseError}
+                </div>
+              )}
+              {(rateLimitStatus.isRateLimited || rateLimitStatus.isThrottling) && (
+                <div className={`text-sm rounded-lg p-3 border ${
+                  rateLimitStatus.isThrottling 
+                    ? 'bg-yellow-50 border-yellow-300 text-yellow-800' 
+                    : 'bg-orange-50 border-orange-300 text-orange-800'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    {rateLimitStatus.isThrottling ? (
+                      <>
+                        <span className="animate-spin h-4 w-4 border-2 border-yellow-600 border-t-transparent rounded-full" />
+                        <span>
+                          Rate limit hit - Retrying (attempt {rateLimitStatus.retryCount})...
+                          {rateLimitStatus.retryAfter && ` Waiting ${rateLimitStatus.retryAfter}s`}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span>⚠️</span>
+                        <span>
+                          Rate limit exceeded
+                          {rateLimitStatus.retryAfter && ` - Retry after ${rateLimitStatus.retryAfter}s`}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+              {isWaitingBetweenRequests && (
+                <div className="text-sm rounded-lg p-3 border bg-blue-50 border-blue-300 text-blue-800">
+                  <div className="flex items-center gap-2">
+                    <span className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full" />
+                    <span>
+                      Waiting 21 seconds between requests to avoid rate limits...
+                    </span>
+                  </div>
+                </div>
+              )}
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="submit"
+                  disabled={isParsingFoods}
+                  className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white px-5 py-3 rounded-lg font-semibold flex items-center gap-2"
+                >
+                  {isParsingFoods ? (
+                    <>
+                      <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+                      Analyzing...
+                    </>
+                  ) : (
+                    <>
+                      ✨ Analyze with NutritionGPT
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSkipSplash}
+                  className="px-5 py-3 rounded-lg border border-slate-300 text-slate-600 hover:text-slate-900 hover:border-slate-400"
+                >
+                  Skip for now
+                </button>
+              </div>
+              <p className="text-xs text-slate-500">
+                Your API key never leaves this browser. Nutrition estimates are generated via OpenAI and saved locally.
+              </p>
+            </form>
+          ) : (
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900">Review NutritionGPT parsing</h2>
+                <p className="text-sm text-slate-600">Make sure each line looks correct before we fetch nutrient data.</p>
+              </div>
+              <div className="space-y-3 max-h-[320px] overflow-y-auto pr-1">
+                {parsedLinesPreview.map((section) => (
+                  <div
+                    key={section.id}
+                    className="border border-slate-200 rounded-xl p-3 bg-white/70 shadow-sm"
+                  >
+                    <div className="text-xs uppercase tracking-wide text-slate-500">Input</div>
+                    <div className="font-medium text-slate-800 mt-1">{section.line}</div>
+                    {section.foods.length ? (
+                      <ul className="mt-3 space-y-1 text-sm text-slate-700">
+                        {section.foods.map((food, idx) => (
+                          <li key={`${section.id}-${idx}`} className="flex justify-between gap-4">
+                            <span>{titleCase(food.name)}</span>
+                            <span className="font-mono text-slate-900">
+                              {food.quantity} {food.unit}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-3 text-xs text-slate-500 italic">No foods detected in this line.</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {parseError && (
+                <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg p-3">
+                  {parseError}
+                </div>
+              )}
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={resetSplashFlow}
+                  className="px-5 py-3 rounded-lg border border-slate-300 text-slate-600 hover:text-slate-900 hover:border-slate-400"
+                  disabled={isParsingFoods}
+                >
+                  ← Edit text
+                </button>
+                <button
+                  type="button"
+                  onClick={finalizeNutritionImport}
+                  disabled={isParsingFoods}
+                  className="bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white px-5 py-3 rounded-lg font-semibold flex items-center gap-2"
+                >
+                  {isParsingFoods ? (
+                    <>
+                      <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+                      Importing...
+                    </>
+                  ) : (
+                    <>
+                      ✅ Looks good — import data
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 max-w-7xl mx-auto min-h-screen bg-gray-50">
       <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+        {/* Rate Limit Status Indicator */}
+        {(rateLimitStatus.isRateLimited || rateLimitStatus.isThrottling) && (
+          <div className={`mb-4 p-3 rounded-lg border ${
+            rateLimitStatus.isThrottling 
+              ? 'bg-yellow-50 border-yellow-300' 
+              : 'bg-orange-50 border-orange-300'
+          }`}>
+            <div className="flex items-center gap-2">
+              {rateLimitStatus.isThrottling ? (
+                <>
+                  <span className="animate-spin h-4 w-4 border-2 border-yellow-600 border-t-transparent rounded-full" />
+                  <span className="text-sm font-semibold text-yellow-800">
+                    Rate limit hit - Retrying (attempt {rateLimitStatus.retryCount})...
+                  </span>
+                  {rateLimitStatus.retryAfter && (
+                    <span className="text-xs text-yellow-700">
+                      Waiting {rateLimitStatus.retryAfter}s
+                    </span>
+                  )}
+                </>
+              ) : (
+                <>
+                  <span className="text-orange-600">⚠️</span>
+                  <span className="text-sm font-semibold text-orange-800">
+                    Rate limit exceeded
+                  </span>
+                  {rateLimitStatus.retryAfter && (
+                    <span className="text-xs text-orange-700">
+                      Retry after {rateLimitStatus.retryAfter}s
+                    </span>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        )}
+        {/* Throttle Status Indicator */}
+        {isWaitingBetweenRequests && (
+          <div className="mb-4 p-3 rounded-lg border bg-blue-50 border-blue-300">
+            <div className="flex items-center gap-2">
+              <span className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full" />
+              <span className="text-sm font-semibold text-blue-800">
+                Waiting 21 seconds between requests to avoid rate limits...
+              </span>
+            </div>
+          </div>
+        )}
         <div className="flex justify-between items-start">
           <div>
             <h1 className="text-3xl font-bold mb-2 text-gray-800">Nutrition Analyzer</h1>
             <p className="text-gray-600">Track your daily nutrition intake and compare against RDA values</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => {
+                resetSplashFlow();
+                setShowSplash(true);
+              }}
+              className="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded transition-colors text-sm"
+            >
+              ✨ NutritionGPT
+            </button>
             <button
               onClick={saveList}
               className={`px-4 py-2 rounded transition-colors text-sm ${
@@ -655,6 +2156,34 @@ export default function NutritionAnalyzerApp() {
             >
               ⬇️ Export JSON
             </button>
+            <button
+              onClick={generateTextList}
+              className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded transition-colors text-sm"
+              title="Generate text list of foods"
+            >
+              📝 Text List
+            </button>
+            <button
+              onClick={() => setShowApiLogs(true)}
+              className={`px-4 py-2 rounded transition-colors text-sm ${
+                rateLimitStatus.isRateLimited || rateLimitStatus.isThrottling
+                  ? 'bg-orange-500 hover:bg-orange-600 text-white'
+                  : 'bg-gray-500 hover:bg-gray-600 text-white'
+              }`}
+              title={`View API logs (${apiLogs.length} entries)${rateLimitStatus.isRateLimited ? ' - Rate limit active' : ''}`}
+            >
+              📋 API Logs {apiLogs.length > 0 && `(${apiLogs.length})`}
+              {(rateLimitStatus.isRateLimited || rateLimitStatus.isThrottling) && (
+                <span className="ml-1">⚠️</span>
+              )}
+            </button>
+            <button
+              onClick={() => setShowDeleteDatabaseDialog(true)}
+              className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded transition-colors text-sm"
+              title="Manage food database"
+            >
+              🗑️ Manage Database
+            </button>
             <label className="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded transition-colors text-sm cursor-pointer">
               ⬆️ Import JSON
               <input
@@ -668,87 +2197,7 @@ export default function NutritionAnalyzerApp() {
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow-md p-4 mb-4">
-        <h2 className="text-lg font-semibold mb-2">USDA FoodData Central</h2>
-        <p className="text-sm text-gray-600 mb-3">
-          Fetch additional foods from the USDA National Agricultural Library API (
-          <a className="text-blue-600 underline" href="https://api.nal.usda.gov/" target="_blank" rel="noreferrer">
-            api.nal.usda.gov
-          </a>
-          ). Provide your API key and a search term to merge USDA results into this database.
-        </p>
-        <div className="flex flex-wrap gap-2 items-center">
-          <input
-            type="text"
-            value={usdaApiKey}
-            onChange={(e) => setUsdaApiKey(e.target.value)}
-            placeholder="USDA API Key"
-            className="border p-2 rounded flex-1 min-w-[180px] focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <input
-            type="text"
-            value={usdaQuery}
-            onChange={(e) => setUsdaQuery(e.target.value)}
-            placeholder="Search term (e.g., salmon)"
-            className="border p-2 rounded flex-1 min-w-[160px] focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <button
-            onClick={fetchUsdaFoods}
-            disabled={isFetchingUSDA}
-            className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded transition-colors disabled:opacity-70"
-          >
-            {isFetchingUSDA ? 'Fetching...' : 'Fetch Foods'}
-          </button>
-        </div>
-        {usdaStatus && <p className="text-xs text-gray-600 mt-2">{usdaStatus}</p>}
-      </div>
-
       {/* Food Selection Dialog */}
-      {showFoodSelection && fetchedFoods.length > 0 && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
-            <h2 className="text-xl font-bold mb-4">Select Food to Add</h2>
-            <p className="text-sm text-gray-600 mb-4">Found {fetchedFoods.length} foods. Select one to add to your database:</p>
-            <div className="space-y-2 max-h-[60vh] overflow-y-auto">
-              {fetchedFoods.map((food) => (
-                <div 
-                  key={food.name} 
-                  className="border rounded p-3 hover:bg-gray-50 flex justify-between items-start"
-                >
-                  <div className="flex-1">
-                    <div className="font-semibold">{food.name}</div>
-                    <div className="text-sm text-gray-500 mt-1">{food.description}</div>
-                    <div className="text-xs text-gray-400 mt-1">
-                      Calories: {food.profile.calories?.toFixed(1) || 0} kcal • 
-                      Protein: {food.profile.protein?.toFixed(1) || 0}g • 
-                      Carbs: {food.profile.carbs?.toFixed(1) || 0}g
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => addSelectedFood(food.name)}
-                    className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded text-sm ml-4"
-                  >
-                    Add
-                  </button>
-                </div>
-              ))}
-            </div>
-            <div className="mt-4 flex justify-end">
-              <button
-                onClick={() => {
-                  setShowFoodSelection(false);
-                  setFetchedFoods([]);
-                  setUsdaStatus("");
-                }}
-                className="bg-gray-300 hover:bg-gray-400 text-gray-800 px-4 py-2 rounded"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Save Dialog */}
       {showSaveDialog && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -833,6 +2282,275 @@ export default function NutritionAnalyzerApp() {
           </div>
         </div>
       )}
+
+      {/* API Logs Modal */}
+      {showApiLogs && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-5xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold">OpenAI API Logs</h2>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setApiLogs([])}
+                  className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm"
+                  disabled={apiLogs.length === 0}
+                >
+                  Clear Logs
+                </button>
+                <button
+                  onClick={() => setShowApiLogs(false)}
+                  className="bg-gray-300 hover:bg-gray-400 text-gray-800 px-4 py-2 rounded"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+            <div className="text-sm text-gray-600 mb-4">
+              Total entries: {apiLogs.length} ({apiLogs.filter(l => l.type === 'request').length} requests, {apiLogs.filter(l => l.type === 'response').length} responses)
+            </div>
+            <div className="flex-1 overflow-y-auto space-y-3 pr-2">
+              {apiLogs.length === 0 ? (
+                <p className="text-gray-500 text-center py-8">No API calls yet. Make a request to see logs here.</p>
+              ) : (
+                apiLogs.map((log, idx) => (
+                  <div
+                    key={log.id || idx}
+                    className={`border rounded-lg p-4 ${
+                      log.type === 'request' 
+                        ? 'bg-blue-50 border-blue-200' 
+                        : log.type === 'retry'
+                        ? 'bg-yellow-50 border-yellow-200'
+                        : log.type === 'throttle'
+                        ? 'bg-purple-50 border-purple-200'
+                        : log.status === 200 
+                        ? 'bg-green-50 border-green-200' 
+                        : log.status === 429
+                        ? 'bg-orange-50 border-orange-300'
+                        : 'bg-red-50 border-red-200'
+                    }`}
+                  >
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <span className={`inline-block px-2 py-1 rounded text-xs font-semibold ${
+                          log.type === 'request' 
+                            ? 'bg-blue-200 text-blue-800' 
+                            : log.type === 'retry'
+                            ? 'bg-yellow-200 text-yellow-800'
+                            : log.type === 'throttle'
+                            ? 'bg-purple-200 text-purple-800'
+                            : log.status === 200 
+                            ? 'bg-green-200 text-green-800' 
+                            : log.status === 429
+                            ? 'bg-orange-200 text-orange-800'
+                            : 'bg-red-200 text-red-800'
+                        }`}>
+                          {log.type === 'request' ? `REQUEST${log.retryAttempt > 0 ? ` (RETRY ${log.retryAttempt})` : ''}` : log.type === 'retry' ? 'RETRY' : log.type === 'throttle' ? 'THROTTLE' : `RESPONSE ${log.status}`}
+                        </span>
+                        <span className="ml-2 text-xs text-gray-500">
+                          {new Date(log.timestamp).toLocaleTimeString()}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="mt-2">
+                      {log.type === 'request' ? (
+                        <div className="space-y-2">
+                          <div>
+                            <span className="text-xs font-semibold text-gray-700">Model:</span>
+                            <span className="ml-2 text-sm">{log.data.model}</span>
+                          </div>
+                          <div>
+                            <span className="text-xs font-semibold text-gray-700">Temperature:</span>
+                            <span className="ml-2 text-sm">{log.data.temperature}</span>
+                          </div>
+                          <details className="mt-2">
+                            <summary className="cursor-pointer text-sm font-semibold text-gray-700 hover:text-gray-900">
+                              Messages ({log.data.messages?.length || 0})
+                            </summary>
+                            <div className="mt-2 pl-4 border-l-2 border-gray-300">
+                              {log.data.messages?.map((msg, msgIdx) => (
+                                <div key={msgIdx} className="mb-3">
+                                  <div className="text-xs font-semibold text-gray-600 mb-1">
+                                    {msg.role.toUpperCase()}
+                                  </div>
+                                  <pre className="bg-white p-2 rounded text-xs overflow-x-auto border border-gray-200">
+                                    {typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content, null, 2)}
+                                  </pre>
+                                </div>
+                              ))}
+                            </div>
+                          </details>
+                          {log.data.response_format && (
+                            <div className="mt-2">
+                              <span className="text-xs font-semibold text-gray-700">Response Format:</span>
+                              <pre className="bg-white p-2 rounded text-xs mt-1 overflow-x-auto border border-gray-200">
+                                {JSON.stringify(log.data.response_format, null, 2)}
+                              </pre>
+                            </div>
+                          )}
+                        </div>
+                      ) : log.type === 'retry' ? (
+                        <div className="space-y-2">
+                          <div>
+                            <span className="text-xs font-semibold text-gray-700">Retry Attempt:</span>
+                            <span className="ml-2 text-sm">{log.data.retryCount}</span>
+                          </div>
+                          <div>
+                            <span className="text-xs font-semibold text-gray-700">Delay:</span>
+                            <span className="ml-2 text-sm">{log.data.delayMs}ms ({(log.data.delayMs / 1000).toFixed(1)}s)</span>
+                          </div>
+                          {log.data.retryAfter && (
+                            <div>
+                              <span className="text-xs font-semibold text-gray-700">Retry-After Header:</span>
+                              <span className="ml-2 text-sm">{log.data.retryAfter}s</span>
+                            </div>
+                          )}
+                        </div>
+                      ) : log.type === 'throttle' ? (
+                        <div className="space-y-2">
+                          <div>
+                            <span className="text-xs font-semibold text-gray-700">Throttle Wait:</span>
+                            <span className="ml-2 text-sm">{log.data.waitTimeSeconds}s ({log.data.waitTimeMs}ms)</span>
+                          </div>
+                          <div className="text-xs text-gray-600 italic">
+                            Waiting 21 seconds between requests to avoid rate limits
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <div>
+                            <span className="text-xs font-semibold text-gray-700">Status:</span>
+                            <span className={`ml-2 text-sm font-semibold ${
+                              log.status === 200 
+                                ? 'text-green-700' 
+                                : log.status === 429
+                                ? 'text-orange-700'
+                                : 'text-red-700'
+                            }`}>
+                              {log.status} {log.statusText}
+                              {log.status === 429 && ' (Rate Limit Exceeded)'}
+                            </span>
+                          </div>
+                          {log.status === 429 && (
+                            <div className="bg-orange-100 border border-orange-300 rounded p-2 text-xs">
+                              <div className="font-semibold text-orange-800 mb-1">Rate Limit Information:</div>
+                              <div className="text-orange-700">
+                                This request hit the rate limit. The system will automatically retry with exponential backoff.
+                              </div>
+                            </div>
+                          )}
+                          <details className="mt-2">
+                            <summary className="cursor-pointer text-sm font-semibold text-gray-700 hover:text-gray-900">
+                              Response Data
+                            </summary>
+                            <pre className="bg-white p-3 rounded text-xs mt-2 overflow-x-auto border border-gray-200 max-h-96 overflow-y-auto">
+                              {JSON.stringify(log.data, null, 2)}
+                            </pre>
+                          </details>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Food Database Dialog */}
+      {showDeleteDatabaseDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold">Manage Food Database</h2>
+              <div className="flex gap-2">
+                {Object.keys(foodDatabase).length > 0 && (
+                  <button
+                    onClick={deleteAllFoodsFromDatabase}
+                    className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded text-sm"
+                  >
+                    Delete All
+                  </button>
+                )}
+                <button
+                  onClick={() => setShowDeleteDatabaseDialog(false)}
+                  className="bg-gray-300 hover:bg-gray-400 text-gray-800 px-4 py-2 rounded"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+            <div className="text-sm text-gray-600 mb-4">
+              Total foods in database: {Object.keys(foodDatabase).length}
+            </div>
+            <div className="flex-1 overflow-y-auto space-y-2 pr-2">
+              {Object.keys(foodDatabase).length === 0 ? (
+                <p className="text-gray-500 text-center py-8">Food database is empty.</p>
+              ) : (
+                Object.keys(foodDatabase).sort().map((foodName) => (
+                  <div
+                    key={foodName}
+                    className="border rounded-lg p-4 flex justify-between items-center hover:bg-gray-50"
+                  >
+                    <div className="flex-1">
+                      <div className="font-semibold text-gray-800">{foodName}</div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        {Object.keys(foodDatabase[foodName]).filter(k => k !== 'name' && foodDatabase[foodName][k] > 0).length} nutrients with data
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => deleteFoodFromDatabase(foodName)}
+                      className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm ml-4"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Text List Dialog */}
+      {showTextListDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold">Food List (Text Format)</h2>
+              <button
+                onClick={() => setShowTextListDialog(false)}
+                className="text-gray-500 hover:text-gray-700 text-2xl font-bold"
+              >
+                ×
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto mb-4">
+              <textarea
+                readOnly
+                value={textListContent}
+                className="w-full h-64 p-3 border rounded font-mono text-sm"
+                onClick={(e) => e.target.select()}
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={copyTextListToClipboard}
+                className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded"
+              >
+                📋 Copy to Clipboard
+              </button>
+              <button
+                onClick={() => setShowTextListDialog(false)}
+                className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white rounded-lg shadow-md p-4 mb-4">
         <div className="flex flex-wrap gap-3 items-center">
           <div className="flex items-center gap-2">
@@ -921,9 +2639,10 @@ export default function NutritionAnalyzerApp() {
           <thead>
             <tr className="bg-gray-100 text-left">
               <th className="p-2">Food</th>
-              <th className="p-2">Ounces</th>
+              <th className="p-2">Amount</th>
+              <th className="p-2">Unit</th>
               <th className="p-2">Actions</th>
-              {Object.keys(UNITS).filter(k => k !== 'ounces').map(k => (
+              {Object.keys(UNITS).filter(k => k !== 'ounces' && k !== 'omega3_6_ratio').map(k => (
                 <th key={k} className="p-2 whitespace-nowrap">
                   {formatLabel(k)} {UNITS[k] ? `(${UNITS[k]})` : ''}
                 </th>
@@ -933,7 +2652,7 @@ export default function NutritionAnalyzerApp() {
           <tbody>
             {foods.length === 0 ? (
               <tr>
-                <td colSpan={Object.keys(UNITS).filter(k => k !== 'ounces').length + 3} className="p-4 text-center text-gray-500">
+                <td colSpan={Object.keys(UNITS).filter(k => k !== 'ounces' && k !== 'omega3_6_ratio').length + 4} className="p-4 text-center text-gray-500">
                   No foods added yet. Add a food using the form above.
                 </td>
               </tr>
@@ -942,14 +2661,34 @@ export default function NutritionAnalyzerApp() {
                 <tr key={f.id} className="border-t hover:bg-gray-50">
                   <td className="p-2 font-medium">{f.name}</td>
                   <td className="p-2">
-                    <input 
-                      type="number" 
-                      step="0.1"
-                      min="0"
-                      value={(f.grams*G_TO_OZ).toFixed(1)} 
-                      onChange={(e) => updateFoodQuantity(f.id, e.target.value)} 
-                      className="border p-1 w-20 rounded" 
-                    />
+                    {(() => {
+                      const unit = foodUnits[f.id] || DEFAULT_DISPLAY_UNIT;
+                      const overrideWeight = getStoredUnitWeight(f.name, unit);
+                      const value = gramsToUnit(f.grams, unit, overrideWeight || undefined);
+                      const formatted = Number.isFinite(value) ? value.toFixed(1) : "";
+                      return (
+                        <input 
+                          type="number" 
+                          step="0.1"
+                          min="0"
+                          value={formatted} 
+                          onChange={(e) => updateFoodQuantity(f.id, e.target.value, unit)} 
+                          className="border p-1 w-24 rounded" 
+                          onKeyPress={(e) => e.key === 'Enter' && updateFoodQuantity(f.id, e.target.value, unit)}
+                        />
+                      );
+                    })()}
+                  </td>
+                  <td className="p-2">
+                    <select
+                      value={foodUnits[f.id] || DEFAULT_DISPLAY_UNIT}
+                      onChange={(e) => handleFoodUnitChange(f.id, e.target.value)}
+                      className="border p-1 rounded"
+                    >
+                      {UNIT_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
                   </td>
                   <td className="p-2">
                     <button 
@@ -960,17 +2699,35 @@ export default function NutritionAnalyzerApp() {
                       ×
                     </button>
                   </td>
-                  {Object.keys(UNITS).filter(k => k !== 'ounces').map(k => (
-                    <td key={k} className="p-2 text-right">
-                      {k === 'omega3_6_ratio' ? (
-                        ((f.omega3 || 0) > 0 && (f.omega6 || 0) > 0) 
-                          ? formatRatio((f.omega3 || 0) / (f.omega6 || 1))
-                          : 'N/A'
-                      ) : (
-                        formatNumber((f[k]||0)*f.grams*G_TO_OZ*multiplier, 2)
-                      )}
-                    </td>
-                  ))}
+                  {Object.keys(UNITS).filter(k => k !== 'ounces' && k !== 'omega3_6_ratio').map(k => {
+                    // Get serving_size from the food item or database (same logic as calculateTotals)
+                    let servingSizeInGrams = 100; // Default to 100g for backward compatibility
+                    
+                    if (f._servingSize && f._servingSize.grams) {
+                      servingSizeInGrams = f._servingSize.grams;
+                    } else {
+                      const baseFood = foodDatabase[f.name];
+                      if (baseFood) {
+                        if (baseFood._servingSize && baseFood._servingSize.grams) {
+                          servingSizeInGrams = baseFood._servingSize.grams;
+                        } else if (baseFood._serviceSize && baseFood._serviceSize.grams) {
+                          // Backward compatibility with old _serviceSize
+                          servingSizeInGrams = baseFood._serviceSize.grams;
+                        }
+                      }
+                    }
+                    
+                    // Scale by user's consumed grams relative to the serving_size
+                    const userGrams = f.grams * multiplier;
+                    const scaleFactor = userGrams / servingSizeInGrams;
+                    const nutrientValue = (f[k] || 0) * scaleFactor;
+                    
+                    return (
+                      <td key={k} className="p-2 text-right">
+                        {formatNumber(nutrientValue, 2)}
+                      </td>
+                    );
+                  })}
                 </tr>
               ))
             )}
@@ -984,41 +2741,47 @@ export default function NutritionAnalyzerApp() {
           {Object.entries(totals).map(([k,v]) => {
             const showRDA = RDA[k] && k !== 'carbs' && k !== 'fat' && k !== 'omega6';
             let pct = showRDA ? pctRDA(k) : null;
-            let isBelowRDA = false;
-            let isAboveRDA = false;
+            let percentage = null;
+            let isAtOrAboveRDA = false;
             
-            if (k === 'omega3_6_ratio' && showRDA) {
-              // For ratio: higher is better (like other nutrients)
-              const ratioValue = v;
-              if (ratioValue !== null && !isNaN(ratioValue)) {
-                isBelowRDA = ratioValue < RDA[k]; // Below target is bad (red)
-                isAboveRDA = ratioValue > RDA[k] * 1.5; // Very high is good (yellow/green)
+            if (showRDA) {
+              if (k === 'omega3_6_ratio') {
+                // For ratio: show as percentage of target (100% = 0.33, higher is better)
+                const ratioValue = v;
+                if (ratioValue !== null && !isNaN(ratioValue) && RDA[k]) {
+                  percentage = (ratioValue / RDA[k]) * 100;
+                }
+              } else {
+                // Normal percentage calculation
+                percentage = pct ? parseFloat(pct) : null;
               }
-            } else if (showRDA) {
-              // Normal RDA logic for other nutrients
-              isBelowRDA = v < RDA[k];
-              isAboveRDA = v > RDA[k] * 1.5;
+              // Green if >= 100%, red if < 100% (matching graph logic)
+              isAtOrAboveRDA = percentage !== null && !isNaN(percentage) && percentage >= 100;
             }
             
             return (
               <div 
                 key={k} 
                 className={`p-2 rounded border ${
-                  isBelowRDA ? 'bg-red-50 border-red-200' : 
-                  isAboveRDA ? 'bg-yellow-50 border-yellow-200' : 
-                  'bg-white border-gray-200'
+                  showRDA && percentage !== null && !isNaN(percentage) 
+                    ? (isAtOrAboveRDA ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200')
+                    : 'bg-white border-gray-200'
                 }`}
               >
                 <div className="font-medium text-sm">
                   {formatLabel(k)}
                 </div>
-                <div className={`text-lg font-semibold ${isBelowRDA ? 'text-red-600' : isAboveRDA ? 'text-yellow-600' : 'text-gray-800'}`}>
+                <div className={`text-lg font-semibold ${
+                  showRDA && percentage !== null && !isNaN(percentage)
+                    ? (isAtOrAboveRDA ? 'text-green-600' : 'text-red-600')
+                    : 'text-gray-800'
+                }`}>
                   {k === 'omega3_6_ratio' ? (v !== null && !isNaN(v) ? formatRatio(v) : 'N/A') : formatNumber(v, k === 'calories' ? 0 : 2)} {UNITS[k] || ''}
                 </div>
                 {showRDA && (
                   <div className="text-xs text-gray-600 mt-1">
                     {k === 'omega3_6_ratio' ? (
-                      <>Target: {formatRatio(RDA[k])} (higher is better)</>
+                      <>Target: {formatRatio(RDA[k])}</>
                     ) : (
                       <>{pct}% of RDA ({formatNumber(RDA[k], k === 'calories' ? 0 : 2)} {UNITS[k] || ''})</>
                     )}
@@ -1059,31 +2822,8 @@ export default function NutritionAnalyzerApp() {
             if (percentage !== null && !isNaN(percentage)) {
               chartLabels.push(formatLabel(k));
               
-              // Color coding: green for good (80-120%), yellow for moderate deviation, red for poor
-              let color = '#3b82f6'; // blue default
-              if (k === 'omega3_6_ratio') {
-                // For ratio: higher is better (like other nutrients)
-                if (percentage >= 80 && percentage <= 120) {
-                  color = '#10b981'; // green
-                } else if (percentage >= 60 && percentage < 200) {
-                  color = '#f59e0b'; // yellow
-                } else if (percentage < 60) {
-                  color = '#ef4444'; // red (below)
-                } else {
-                  color = '#f59e0b'; // yellow (very high)
-                }
-              } else {
-                // For nutrients: 80-120% is good
-                if (percentage >= 80 && percentage <= 120) {
-                  color = '#10b981'; // green
-                } else if (percentage >= 60 && percentage < 200) {
-                  color = '#f59e0b'; // yellow
-                } else if (percentage < 60) {
-                  color = '#ef4444'; // red (below)
-                } else {
-                  color = '#f59e0b'; // yellow (very high)
-                }
-              }
+              // Color coding: green for 100% or more, red if below 100%
+              let color = percentage >= 100 ? '#10b981' : '#ef4444'; // green if >= 100%, red if < 100%
               
               chartData.push(percentage);
               chartColors.push(color);
