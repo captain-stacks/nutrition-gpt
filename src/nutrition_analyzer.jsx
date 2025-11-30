@@ -716,6 +716,7 @@ export default function NutritionAnalyzerApp() {
   const [showDeleteDatabaseDialog, setShowDeleteDatabaseDialog] = useState(false);
   const [showTextListDialog, setShowTextListDialog] = useState(false);
   const [textListContent, setTextListContent] = useState("");
+  const [textCopied, setTextCopied] = useState(false);
   const [currentListName, setCurrentListName] = useState(() => {
     // Check if there's a saved current list name
     return localStorage.getItem('currentListName') || null;
@@ -2171,7 +2172,11 @@ Context provided: ${descriptor}
   async function copyTextListToClipboard() {
     try {
       await navigator.clipboard.writeText(textListContent);
-      alert("Text list copied to clipboard!");
+      setTextCopied(true);
+      // Reset the checkmark after 2 seconds
+      setTimeout(() => {
+        setTextCopied(false);
+      }, 2000);
     } catch (err) {
       console.error("Failed to copy to clipboard:", err);
       alert("Failed to copy to clipboard. Please select and copy manually.");
@@ -3172,9 +3177,13 @@ Context provided: ${descriptor}
             <div className="flex gap-2 justify-end">
               <button
                 onClick={copyTextListToClipboard}
-                className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded"
+                className={`px-4 py-2 rounded transition-colors ${
+                  textCopied 
+                    ? 'bg-green-500 hover:bg-green-600 text-white' 
+                    : 'bg-blue-500 hover:bg-blue-600 text-white'
+                }`}
               >
-                📋 Copy to Clipboard
+                {textCopied ? '✓ Copied' : '📋 Copy to Clipboard'}
               </button>
               <button
                 onClick={() => setShowTextListDialog(false)}
