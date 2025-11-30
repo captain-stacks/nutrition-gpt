@@ -2130,17 +2130,20 @@ Context provided: ${descriptor}
       const overrideWeight = getStoredUnitWeight(f.name, unit);
       const value = gramsToUnit(f.grams, unit, overrideWeight || undefined);
       
-      // Format without decimal if whole number, otherwise show one decimal place
+      // Format without decimal if whole number, otherwise show up to 2 decimal places (removing trailing zeros)
       let formatted = "0";
       let numericValue = 0;
       if (Number.isFinite(value)) {
-        // Round to 1 decimal place first to handle floating point precision issues
-        const rounded = Math.round(value * 10) / 10;
+        // Round to 2 decimal places first to handle floating point precision issues
+        const rounded = Math.round(value * 100) / 100;
         numericValue = rounded;
         // Check if it's effectively a whole number (within small epsilon)
-        formatted = Math.abs(rounded - Math.round(rounded)) < 0.001 
-          ? Math.round(rounded).toString() 
-          : rounded.toFixed(1);
+        if (Math.abs(rounded - Math.round(rounded)) < 0.001) {
+          formatted = Math.round(rounded).toString();
+        } else {
+          // Format to 2 decimal places, then remove trailing zeros
+          formatted = rounded.toFixed(2).replace(/\.?0+$/, '');
+        }
       }
       
       // Get full unit label without abbreviation (e.g., "Ounces" instead of "Ounces (oz)")
