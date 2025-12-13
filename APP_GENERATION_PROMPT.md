@@ -132,7 +132,18 @@ Create a comprehensive React-based nutrition tracking and analysis application w
   - Red bars for nutrients <100% RDA
   - Red bars for nutrients exceeding upper limits (Tolerable Upper Intake Levels)
 - Upper limit detection:
-  - Vitamin A: 3000 µg RAE (applies to both men and women)
+  - Vitamin A: 3000 µg RAE
+  - Vitamin D: 100 µg (4000 IU)
+  - Vitamin E: 1000 mg
+  - Vitamin C: 2000 mg
+  - Folate: 1000 µg (from supplements/fortified foods)
+  - Choline: 3500 mg
+  - Calcium: 2500 mg
+  - Iron: 45 mg
+  - Zinc: 40 mg
+  - Selenium: 400 µg
+  - Iodine: 1100 µg
+  - Magnesium: 350 mg (from supplements)
   - Show warning indicator in both Daily Totals grid and bar chart tooltip when exceeded
   - Turn cell/bar red when upper limit is exceeded
 - Exclude carbs, fat, and omega-6 from RDA chart (they're not typically tracked against RDA)
