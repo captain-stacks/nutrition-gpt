@@ -336,6 +336,11 @@ const RDA_WOMEN = {
     omega3_6_ratio: 0.33
 };
 
+// Upper limits (Tolerable Upper Intake Level) - applies to both men and women
+const UPPER_LIMITS = {
+  vitaminA: 3000, // µg RAE
+};
+
   const UNITS = {
     calories: "kcal",
     protein: "g",
@@ -3607,6 +3612,7 @@ Context provided: ${descriptor}
             let pct = showRDA ? pctRDA(k) : null;
             let percentage = null;
             let isAtOrAboveRDA = false;
+            let exceedsUpperLimit = false;
             
             if (showRDA) {
               if (k === 'omega3_6_ratio') {
@@ -3623,22 +3629,31 @@ Context provided: ${descriptor}
               isAtOrAboveRDA = percentage !== null && !isNaN(percentage) && percentage >= 100;
             }
             
+            // Check if exceeds upper limit
+            if (UPPER_LIMITS[k] && v > UPPER_LIMITS[k]) {
+              exceedsUpperLimit = true;
+            }
+            
             return (
               <div 
                 key={k} 
                 className={`p-2 rounded border ${
-                  showRDA && percentage !== null && !isNaN(percentage) 
-                    ? (isAtOrAboveRDA ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200')
-                    : 'bg-white border-gray-200'
+                  exceedsUpperLimit
+                    ? 'bg-red-50 border-red-200'
+                    : (showRDA && percentage !== null && !isNaN(percentage) 
+                      ? (isAtOrAboveRDA ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200')
+                      : 'bg-white border-gray-200')
                 }`}
               >
                 <div className="font-medium text-sm">
                   {formatLabel(k)}
         </div>
                 <div className={`text-lg font-semibold ${
-                  showRDA && percentage !== null && !isNaN(percentage)
-                    ? (isAtOrAboveRDA ? 'text-green-600' : 'text-red-600')
-                    : 'text-gray-800'
+                  exceedsUpperLimit
+                    ? 'text-red-600'
+                    : (showRDA && percentage !== null && !isNaN(percentage)
+                      ? (isAtOrAboveRDA ? 'text-green-600' : 'text-red-600')
+                      : 'text-gray-800')
                 }`}>
                   {k === 'omega3_6_ratio' ? (v !== null && !isNaN(v) ? formatRatio(v) : 'N/A') : formatNumber(v, k === 'calories' ? 0 : 2)} {UNITS[k] || ''}
       </div>
@@ -3649,6 +3664,11 @@ Context provided: ${descriptor}
                     ) : (
                       <>{pct}% of RDA ({formatNumber(RDA[k], k === 'calories' ? 0 : 2)} {UNITS[k] || ''})</>
                     )}
+                  </div>
+                )}
+                {UPPER_LIMITS[k] && v > UPPER_LIMITS[k] && (
+                  <div className="text-xs text-red-600 mt-1 font-semibold">
+                    ⚠️ Exceeds upper limit ({formatNumber(UPPER_LIMITS[k], 0)} {UNITS[k] || ''})
                   </div>
                 )}
               </div>
@@ -3687,7 +3707,13 @@ Context provided: ${descriptor}
               chartLabels.push(formatLabel(k));
               
               // Color coding: green for 100% or more, red if below 100%
+              // Special handling for nutrients with upper limits
               let color = percentage >= 100 ? '#10b981' : '#ef4444'; // green if >= 100%, red if < 100%
+              
+              // Check if this nutrient has an upper limit and if exceeded
+              if (UPPER_LIMITS[k] && v > UPPER_LIMITS[k]) {
+                color = '#ef4444'; // red if exceeds upper limit
+              }
               
               chartData.push(percentage);
               chartColors.push(color);
@@ -3736,7 +3762,15 @@ Context provided: ${descriptor}
                     if (nutrientKey === 'omega3_6_ratio') {
                       return `${label}: ${value.toFixed(1)}% of target (${value >= 100 ? 'good' : 'below target'})`;
                     }
-                    return `${label}: ${value.toFixed(1)}% of RDA`;
+                    
+                    let tooltipText = `${label}: ${value.toFixed(1)}% of RDA`;
+                    
+                    // Add upper limit warning if applicable
+                    if (UPPER_LIMITS[nutrientKey] && totals[nutrientKey] > UPPER_LIMITS[nutrientKey]) {
+                      tooltipText += ` ⚠️ Exceeds upper limit (${UPPER_LIMITS[nutrientKey]} ${UNITS[nutrientKey]})`;
+                    }
+                    
+                    return tooltipText;
                   }
                 }
               },

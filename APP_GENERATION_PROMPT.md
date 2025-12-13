@@ -130,10 +130,15 @@ Create a comprehensive React-based nutrition tracking and analysis application w
 - Color coding:
   - Green bars for nutrients ≥100% RDA
   - Red bars for nutrients <100% RDA
+  - Red bars for nutrients exceeding upper limits (Tolerable Upper Intake Levels)
+- Upper limit detection:
+  - Vitamin A: 3000 µg RAE (applies to both men and women)
+  - Show warning indicator in both Daily Totals grid and bar chart tooltip when exceeded
+  - Turn cell/bar red when upper limit is exceeded
 - Exclude carbs, fat, and omega-6 from RDA chart (they're not typically tracked against RDA)
 - Include omega-3:6 ratio in chart (show as percentage of target)
 - Rotate x-axis labels 45 degrees for readability
-- Tooltips showing exact percentage values
+- Tooltips showing exact percentage values and upper limit warnings
 
 ### 6. OpenAI Integration (NutritionGPT)
 - Feature to parse food lists from natural language text
