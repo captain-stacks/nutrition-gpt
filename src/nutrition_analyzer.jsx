@@ -343,7 +343,6 @@ const UPPER_LIMITS = {
   vitaminD: 100, // µg (4000 IU)
   vitaminE: 1000, // mg (α-tocopherol)
   vitaminC: 2000, // mg
-  folate: 1000, // µg (from supplements/fortified foods only)
   choline: 3500, // mg
   calcium: 2500, // mg
   iron: 45, // mg

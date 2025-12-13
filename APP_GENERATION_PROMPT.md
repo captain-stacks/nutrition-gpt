@@ -136,7 +136,6 @@ Create a comprehensive React-based nutrition tracking and analysis application w
   - Vitamin D: 100 µg (4000 IU)
   - Vitamin E: 1000 mg
   - Vitamin C: 2000 mg
-  - Folate: 1000 µg (from supplements/fortified foods)
   - Choline: 3500 mg
   - Calcium: 2500 mg
   - Iron: 45 mg
