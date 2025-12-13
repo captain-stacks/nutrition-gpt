@@ -13,19 +13,38 @@
   }
 }
 
-.App-header {
-  background-color: #282c34;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-size: calc(10px + 2vmin);
-  color: white;
+/* Light theme */
+@media (prefers-color-scheme: light) {
+  body {
+    background-color: #ffffff;
+    color: #000000;
+  }
+
+  .App-header {
+    background-color: #e0e0e0;
+    color: #282c34;
+  }
+
+  .App-link {
+    color: #1976d2;
+  }
 }
 
-.App-link {
-  color: #61dafb;
+/* Dark theme */
+@media (prefers-color-scheme: dark) {
+  body {
+    background-color: #333333;
+    color: #ffffff;
+  }
+
+  .App-header {
+    background-color: #4a4a4a;
+    color: #e0e0e0;
+  }
+
+  .App-link {
+    color: #61dafb;
+  }
 }
 
 @keyframes App-logo-spin {

@@ -3311,12 +3311,13 @@ Context provided: ${descriptor}
         </div>
       )}
 
-      <div className="bg-white rounded-lg shadow-md p-4 overflow-x-auto">
+      <div className="bg-white rounded-lg shadow-md p-4">
         <h2 className="text-xl font-semibold mb-4">Food List</h2>
-        <table className="w-full border text-sm">
-        <thead>
-          <tr className="bg-gray-100 text-left">
-              <th className="px-2 py-1 min-w-[200px]">Food</th>
+        <div className="overflow-x-auto">
+          <table className="w-full border text-sm">
+          <thead>
+            <tr className="bg-gray-100 text-left">
+                <th className="px-2 py-1 min-w-[200px] sticky left-0 bg-gray-100 z-10">Food</th>
               <th className="px-2 py-1">Amount</th>
               <th className="px-2 py-1">Unit</th>
               {Object.keys(UNITS).filter(k => k !== 'ounces' && k !== 'omega3_6_ratio').map(k => (
@@ -3336,7 +3337,7 @@ Context provided: ${descriptor}
             ) : (
               foods.map(f => (
                 <tr key={f.id} className="border-t hover:bg-gray-50">
-                  <td className="px-2 py-1 font-medium min-w-[200px]">
+                  <td className="px-2 py-1 font-medium min-w-[200px] sticky left-0 bg-white hover:bg-gray-50 z-10">
                     <div className="flex items-center gap-2">
                       <button 
                         onClick={() => removeFood(f.id)}
@@ -3595,6 +3596,7 @@ Context provided: ${descriptor}
             )}
         </tbody>
       </table>
+        </div>
       </div>
 
       <div className="mt-6 bg-gray-50 rounded-lg p-4">
