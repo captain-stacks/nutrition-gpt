@@ -2617,17 +2617,6 @@ Context provided: ${descriptor}
             </div>
           </div>
         )}
-        {/* Throttle Status Indicator */}
-        {isWaitingBetweenRequests && (
-          <div className="mb-4 p-3 rounded-lg border bg-blue-50 border-blue-300">
-            <div className="flex items-center gap-2">
-              <span className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full" />
-              <span className="text-sm font-semibold text-blue-800">
-                Waiting 21 seconds between requests to avoid rate limits...
-              </span>
-            </div>
-          </div>
-        )}
         <div className="flex justify-between items-start">
           <div>
             <h1 className="text-3xl font-bold mb-2 text-gray-800">Nutrition Analyzer</h1>
