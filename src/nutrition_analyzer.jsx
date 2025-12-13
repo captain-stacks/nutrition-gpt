@@ -3637,11 +3637,17 @@ Context provided: ${descriptor}
         // Calcium:Magnesium ratio (optimal range: 1.3-3)
         if (totals.calcium && totals.magnesium && totals.magnesium > 0) {
           const caToMgRatio = totals.calcium / totals.magnesium;
-          if (caToMgRatio < 1.3 || caToMgRatio > 3) {
+          if (caToMgRatio < 1.3) {
             ratioWarnings.push({
-              title: 'Calcium:Magnesium Ratio',
-              message: `Ratio is ${caToMgRatio.toFixed(2)}:1. Optimal range is 1.3-3.0 for better nutrient absorption and bone health.`,
-              current: `${formatNumber(totals.calcium, 2)} mg Ca / ${formatNumber(totals.magnesium, 2)} mg Mg`
+              title: 'Low Calcium Relative to Magnesium',
+              message: 'Your calcium to magnesium ratio is too low. This imbalance may affect bone health and nutrient absorption. Consider increasing calcium-rich foods (e.g., dairy, leafy greens, fortified foods) or discussing supplements with a clinician.',
+              current: `${formatNumber(totals.calcium, 2)} mg Ca / ${formatNumber(totals.magnesium, 2)} mg Mg (ratio: ${caToMgRatio.toFixed(2)})`
+            });
+          } else if (caToMgRatio > 3) {
+            ratioWarnings.push({
+              title: 'High Calcium Relative to Magnesium',
+              message: 'Your calcium to magnesium ratio is too high. This imbalance may reduce magnesium absorption and affect muscle and nerve function. Consider increasing magnesium-rich foods (e.g., leafy greens, nuts, seeds, whole grains) or discussing supplements with a clinician.',
+              current: `${formatNumber(totals.calcium, 2)} mg Ca / ${formatNumber(totals.magnesium, 2)} mg Mg (ratio: ${caToMgRatio.toFixed(2)})`
             });
           }
         }
