@@ -3696,6 +3696,24 @@ Context provided: ${descriptor}
           }
         }
         
+        // High iodine with low selenium
+        if (totals.iodine >= 300 && totals.selenium < 40) {
+          ratioWarnings.push({
+            title: 'High Iodine with Low Selenium',
+            message: 'High iodine with low selenium may stress the thyroid. Consider increasing selenium-rich foods (e.g., eggs, seafood, meat, Brazil nuts in moderation) or discussing supplements with a clinician.',
+            current: `${formatNumber(totals.iodine, 2)} µg I / ${formatNumber(totals.selenium, 2)} µg Se`
+          });
+        }
+        
+        // High selenium with low iodine
+        if (totals.selenium > 200 && totals.iodine < 75) {
+          ratioWarnings.push({
+            title: 'High Selenium with Low Iodine',
+            message: 'High selenium with relatively low iodine may affect thyroid hormone balance. Review both nutrients with a clinician.',
+            current: `${formatNumber(totals.selenium, 2)} µg Se / ${formatNumber(totals.iodine, 2)} µg I`
+          });
+        }
+        
         if (ratioWarnings.length > 0) {
           return (
             <div className="mt-6 space-y-3">

@@ -75,8 +75,11 @@ Create a comprehensive React-based nutrition tracking and analysis application w
   - Upper limit warnings for nutrients exceeding tolerable limits
 - Display nutrient ratio warnings below daily totals:
   - Calcium:Magnesium ratio (optimal 1.3-3.0)
+  - Iodine:Selenium thyroid balance warnings:
+    - High iodine (≥300 µg) with low selenium (<40 µg)
+    - High selenium (>200 µg) with low iodine (<75 µg)
   - Show warnings in red boxes similar to upper limit warnings
-  - Include current ratio and explanation of optimal range
+  - Include current values and actionable health guidance
 
 ### 4. RDA (Recommended Daily Allowance) Tracking
 - Support separate RDA values for men and women
