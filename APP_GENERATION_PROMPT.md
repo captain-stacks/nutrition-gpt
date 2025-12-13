@@ -157,11 +157,9 @@ Create a comprehensive React-based nutrition tracking and analysis application w
      - Store in database with unique names (handle duplicates with `generateUniqueName`)
      - Add to food list
      - Track failed foods and report them to user
-- Handle rate limiting:
+- Handle API errors:
   - Queue requests sequentially
-  - Wait 21 seconds between requests to avoid rate limits
   - Automatic retry with exponential backoff on 429 errors
-  - Show status indicators for rate limiting and throttling
 - Support both "gpt-4o-mini" (with temperature=0) and "gpt-5" models
 - Use structured JSON responses with response_format
 - Parse and normalize nutrient data from API responses:
@@ -310,8 +308,6 @@ Create a comprehensive React-based nutrition tracking and analysis application w
   - Request details (model, temperature, messages, response_format)
   - Response details (status, data)
   - Retry attempts
-  - Throttle waits
-  - Rate limit information
 - Export/Import JSON for:
   - Food database
   - Food lists
@@ -388,12 +384,6 @@ Create a comprehensive React-based nutrition tracking and analysis application w
     - Maintain spinner arrow functionality throughout
     - Handle mouse clicks on spinner vs. input field
     - Clear value when all text is selected and user types
-- **Rate Limiting**: 
-  - Automatic throttling (21 seconds between requests)
-  - Exponential backoff on 429 errors
-  - Visual status indicators
-  - Request queue with sequential processing
-  - Track last request time to enforce delays
 - **Unit Memory**: Remember preferred units per food item
   - Store units by food name (not ID) for persistence across sessions
   - Restore units when foods are loaded

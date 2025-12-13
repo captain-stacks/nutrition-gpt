@@ -767,8 +767,6 @@ export default function NutritionAnalyzerApp() {
     retryCount: 0,
     isThrottling: false
   });
-  const [lastRequestTime, setLastRequestTime] = useState(null);
-  const [isWaitingBetweenRequests, setIsWaitingBetweenRequests] = useState(false);
   
   // Request queue for sequential processing
   const requestQueueRef = useRef([]);
@@ -1153,39 +1151,12 @@ export default function NutritionAnalyzerApp() {
     }
     
     isProcessingQueueRef.current = true;
-    const REQUEST_DELAY_MS = 21000; // 21 seconds between requests
     
     while (requestQueueRef.current.length > 0) {
       const requestItem = requestQueueRef.current.shift();
       
-      // Wait 21 seconds since last request (unless this is the first request)
-      if (lastRequestTimeRef.current !== null) {
-        const timeSinceLastRequest = Date.now() - lastRequestTimeRef.current;
-        if (timeSinceLastRequest < REQUEST_DELAY_MS) {
-          const waitTime = REQUEST_DELAY_MS - timeSinceLastRequest;
-          setIsWaitingBetweenRequests(true);
-          
-          // Log the throttle wait
-          const throttleLog = {
-            id: Date.now() + Math.random(),
-            timestamp: new Date().toISOString(),
-            type: 'throttle',
-            data: {
-              waitTimeMs: waitTime,
-              waitTimeSeconds: (waitTime / 1000).toFixed(1)
-            }
-          };
-          setApiLogs(prev => [...prev, throttleLog]);
-          
-          // Wait for the remaining time
-          await new Promise(resolve => setTimeout(resolve, waitTime));
-          setIsWaitingBetweenRequests(false);
-        }
-      }
-      
       // Update last request time
       lastRequestTimeRef.current = Date.now();
-      setLastRequestTime(Date.now());
       
       // Execute the actual request
       try {
@@ -2469,16 +2440,6 @@ Context provided: ${descriptor}
                         </span>
                       </>
                     )}
-                  </div>
-                </div>
-              )}
-              {isWaitingBetweenRequests && (
-                <div className="text-sm rounded-lg p-3 border bg-blue-50 border-blue-300 text-blue-800">
-                  <div className="flex items-center gap-2">
-                    <span className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full" />
-                    <span>
-                      Waiting 21 seconds between requests to avoid rate limits...
-                    </span>
                   </div>
                 </div>
               )}
