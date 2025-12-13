@@ -743,6 +743,7 @@ export default function NutritionAnalyzerApp() {
   const [isPreviewStage, setIsPreviewStage] = useState(false);
   const [showAddOrNewListDialog, setShowAddOrNewListDialog] = useState(false);
   const [pendingNutritionInput, setPendingNutritionInput] = useState("");
+  const [hasConfirmedListAction, setHasConfirmedListAction] = useState(false);
   const [foodUnits, setFoodUnits] = useState(() => {
     // Load units by food name from localStorage
     const loadedUnitsByName = loadFoodUnits();
@@ -805,7 +806,6 @@ export default function NutritionAnalyzerApp() {
     if (foods.length > 0) {
       const loadedUnitsByName = loadFoodUnits();
       const restoredUnits = {};
-      const restoredAmountValues = {};
       foods.forEach(food => {
         // Prefer unit from foodUnits localStorage, but fall back to saved unit in food data
         const unit = loadedUnitsByName[food.name] || food._savedUnit;
@@ -816,14 +816,15 @@ export default function NutritionAnalyzerApp() {
       // Restore units
       if (Object.keys(restoredUnits).length > 0) {
         setFoodUnits(prev => {
-          // Merge with existing units, prioritizing restored units
-          const merged = { ...prev, ...restoredUnits };
-          // Only update if there are actual changes to avoid infinite loops
-          const hasChanges = Object.keys(restoredUnits).some(id => prev[id] !== restoredUnits[id]);
-          if (hasChanges) {
-            return merged;
-          }
-          return prev;
+          const merged = { ...prev };
+          let changed = false;
+          Object.entries(restoredUnits).forEach(([id, unit]) => {
+            if (!merged[id]) {
+              merged[id] = unit;
+              changed = true;
+            }
+          });
+          return changed ? merged : prev;
         });
       }
       
@@ -1598,10 +1599,14 @@ Context provided: ${descriptor}
     
     // If there are existing foods, show dialog FIRST (before validation)
     // This way the dialog appears immediately when user clicks the button
-    if (foods.length > 0) {
+    if (foods.length > 0 && !hasConfirmedListAction) {
       setPendingNutritionInput(nutritionInput);
       setShowAddOrNewListDialog(true);
       return;
+    }
+    if (hasConfirmedListAction) {
+      // User already chose how to handle the existing list
+      setHasConfirmedListAction(false);
     }
     
     // If no existing foods, do validation and proceed directly
@@ -1672,7 +1677,8 @@ Context provided: ${descriptor}
       }
       proceedWithNutritionParsing(pendingNutritionInput);
     } else {
-      // No pending input - user clicked from main screen, show splash screen
+      // No pending text yet—show splash so the user can enter foods
+      setHasConfirmedListAction(true);
       setShowSplash(true);
     }
   }
@@ -1695,7 +1701,8 @@ Context provided: ${descriptor}
       }
       proceedWithNutritionParsing(pendingNutritionInput);
     } else {
-      // No pending input - user clicked from main screen, show splash screen
+      // No pending text yet—show splash so the user can enter foods
+      setHasConfirmedListAction(true);
       setShowSplash(true);
     }
   }
@@ -1703,6 +1710,7 @@ Context provided: ${descriptor}
   function handleCancelAddOrNewList() {
     setShowAddOrNewListDialog(false);
     setPendingNutritionInput("");
+    setHasConfirmedListAction(false);
   }
 
   async function finalizeNutritionImport() {
@@ -2660,12 +2668,12 @@ Context provided: ${descriptor}
             <button
               onClick={() => {
                 resetSplashFlow();
-                // If there are existing foods, show dialog first
+                setHasConfirmedListAction(false);
                 if (foods.length > 0) {
+                  // Ask user whether to add to current list or start fresh before entering text
                   setPendingNutritionInput("");
                   setShowAddOrNewListDialog(true);
                 } else {
-                  // No existing foods, show splash screen directly
                   setShowSplash(true);
                 }
               }}
