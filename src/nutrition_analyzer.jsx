@@ -340,16 +340,8 @@ const RDA_WOMEN = {
 // Based on National Academies of Medicine dietary reference intakes
 const UPPER_LIMITS = {
   vitaminA: 3000, // µg RAE
-  vitaminD: 100, // µg (4000 IU)
-  vitaminE: 1000, // mg (α-tocopherol)
-  vitaminC: 2000, // mg
-  choline: 3500, // mg
-  calcium: 2500, // mg
-  iron: 45, // mg
-  zinc: 40, // mg
   selenium: 400, // µg
   iodine: 1100, // µg
-  magnesium: 350, // mg (from supplements only)
 };
 
   const UNITS = {
