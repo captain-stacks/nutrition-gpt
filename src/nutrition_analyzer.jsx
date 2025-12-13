@@ -42,6 +42,7 @@ const NUTRIENT_NAME_MAP = {
   "Thiamin": "b1",
   "Choline, total": "choline",
   "Calcium, Ca": "calcium",
+  "Phosphorus, P": "phosphorus",
   "Potassium, K": "potassium",
   "Iodine, I": "iodine",
   "Vitamin C, total ascorbic acid": "vitaminC",
@@ -302,6 +303,7 @@ const RDA_MEN = {
   b1: 1.2,
   choline: 550,
   calcium: 1000,
+  phosphorus: 700,
   potassium: 3400,
   iodine: 150,
   vitaminC: 90,
@@ -329,6 +331,7 @@ const RDA_WOMEN = {
   b1: 1.1,
   choline: 425,
   calcium: 1000,
+  phosphorus: 700,
   potassium: 2600,
   iodine: 150,
   vitaminC: 75,
@@ -364,6 +367,7 @@ const UPPER_LIMITS = {
     b1: "mg",
     choline: "mg",
     calcium: "mg",
+    phosphorus: "mg",
     potassium: "mg",
     iodine: "µg",
   vitaminC: "mg",
@@ -3648,6 +3652,24 @@ Context provided: ${descriptor}
               title: 'High Calcium Relative to Magnesium',
               message: 'Your calcium to magnesium ratio is too high. This imbalance may reduce magnesium absorption and affect muscle and nerve function. Consider increasing magnesium-rich foods (e.g., leafy greens, nuts, seeds, whole grains) or discussing supplements with a clinician.',
               current: `${formatNumber(totals.calcium, 2)} mg Ca / ${formatNumber(totals.magnesium, 2)} mg Mg (ratio: ${caToMgRatio.toFixed(2)})`
+            });
+          }
+        }
+        
+        // Calcium:Phosphorus ratio (optimal range: 1.3-1.5)
+        if (totals.calcium && totals.phosphorus && totals.phosphorus > 0) {
+          const caToPRatio = totals.calcium / totals.phosphorus;
+          if (caToPRatio < 1.3) {
+            ratioWarnings.push({
+              title: 'Low Calcium Relative to Phosphorus',
+              message: 'Your calcium to phosphorus ratio is too low. This imbalance may affect bone health and calcium absorption. Consider increasing calcium-rich foods (e.g., dairy, leafy greens, fortified foods) or discussing supplements with a clinician.',
+              current: `${formatNumber(totals.calcium, 2)} mg Ca / ${formatNumber(totals.phosphorus, 2)} mg P (ratio: ${caToPRatio.toFixed(2)})`
+            });
+          } else if (caToPRatio > 1.5) {
+            ratioWarnings.push({
+              title: 'High Calcium Relative to Phosphorus',
+              message: 'Your calcium to phosphorus ratio is too high. This imbalance may affect mineral balance and bone health. Consider increasing phosphorus-rich foods (e.g., meat, fish, poultry, whole grains, nuts, seeds) or discussing your diet with a clinician.',
+              current: `${formatNumber(totals.calcium, 2)} mg Ca / ${formatNumber(totals.phosphorus, 2)} mg P (ratio: ${caToPRatio.toFixed(2)})`
             });
           }
         }

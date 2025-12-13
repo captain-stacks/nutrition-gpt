@@ -33,6 +33,7 @@ Create a comprehensive React-based nutrition tracking and analysis application w
     - Thiamin/B1 (mg)
     - Choline (mg)
     - Calcium (mg)
+    - Phosphorus (mg)
     - Potassium (mg)
     - Iodine (µg)
     - Vitamin C (mg)
@@ -75,6 +76,7 @@ Create a comprehensive React-based nutrition tracking and analysis application w
   - Upper limit warnings for nutrients exceeding tolerable limits
 - Display nutrient ratio warnings below daily totals:
   - Calcium:Magnesium ratio (optimal 1.3-3.0)
+  - Calcium:Phosphorus ratio (optimal 1.3-1.5)
   - Iodine:Selenium thyroid balance warnings (based on Se:I ratio):
     - Low selenium relative to iodine (Se:I ratio < 0.2)
     - High selenium relative to iodine (Se:I ratio > 0.6)
