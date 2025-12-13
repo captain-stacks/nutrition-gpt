@@ -3721,10 +3721,10 @@ Context provided: ${descriptor}
           return (
             <div className="mt-6 space-y-3">
               {ratioWarnings.map((warning, idx) => (
-                <div key={idx} className="bg-red-50 border border-red-200 rounded-lg p-4">
-                  <div className="font-medium text-red-900">⚠️ {warning.title}</div>
-                  <div className="text-sm text-red-800 mt-1">{warning.message}</div>
-                  <div className="text-xs text-red-700 mt-2 font-mono">{warning.current}</div>
+                <div key={idx} className="bg-red-50 border border-red-300 rounded-lg p-4">
+                  <div className="font-semibold text-red-700">⚠️ {warning.title}</div>
+                  <div className="text-sm text-gray-900 mt-1">{warning.message}</div>
+                  <div className="text-xs text-gray-800 mt-2 font-mono">{warning.current}</div>
                 </div>
               ))}
             </div>
