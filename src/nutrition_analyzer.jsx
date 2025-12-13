@@ -3680,6 +3680,38 @@ Context provided: ${descriptor}
         </div>
       </div>
 
+      {/* Nutrient Ratio Warnings */}
+      {(() => {
+        const ratioWarnings = [];
+        
+        // Calcium:Magnesium ratio (optimal range: 1.3-3)
+        if (totals.calcium && totals.magnesium && totals.magnesium > 0) {
+          const caToMgRatio = totals.calcium / totals.magnesium;
+          if (caToMgRatio < 1.3 || caToMgRatio > 3) {
+            ratioWarnings.push({
+              title: 'Calcium:Magnesium Ratio',
+              message: `Ratio is ${caToMgRatio.toFixed(2)}:1. Optimal range is 1.3-3.0 for better nutrient absorption and bone health.`,
+              current: `${formatNumber(totals.calcium, 2)} mg Ca / ${formatNumber(totals.magnesium, 2)} mg Mg`
+            });
+          }
+        }
+        
+        if (ratioWarnings.length > 0) {
+          return (
+            <div className="mt-6 space-y-3">
+              {ratioWarnings.map((warning, idx) => (
+                <div key={idx} className="bg-red-50 border border-red-200 rounded-lg p-4">
+                  <div className="font-medium text-red-900">⚠️ {warning.title}</div>
+                  <div className="text-sm text-red-800 mt-1">{warning.message}</div>
+                  <div className="text-xs text-red-700 mt-2 font-mono">{warning.current}</div>
+                </div>
+              ))}
+            </div>
+          );
+        }
+        return null;
+      })()}
+
       {/* RDA Bar Chart */}
       <div className="mt-6 bg-white rounded-lg shadow-md p-6">
         <h2 className="font-semibold text-xl mb-4">Nutrients as % of RDA</h2>

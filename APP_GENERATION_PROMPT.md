@@ -72,6 +72,11 @@ Create a comprehensive React-based nutrition tracking and analysis application w
   - Total amount with unit
   - Percentage of RDA (if applicable)
   - Color coding: green if ≥100% RDA, red if <100% RDA
+  - Upper limit warnings for nutrients exceeding tolerable limits
+- Display nutrient ratio warnings below daily totals:
+  - Calcium:Magnesium ratio (optimal 1.3-3.0)
+  - Show warnings in red boxes similar to upper limit warnings
+  - Include current ratio and explanation of optimal range
 
 ### 4. RDA (Recommended Daily Allowance) Tracking
 - Support separate RDA values for men and women
