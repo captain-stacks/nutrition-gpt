@@ -105,6 +105,7 @@ Create a comprehensive React-based nutrition tracking and analysis application w
   - B1/Thiamin: 1.2mg (men) / 1.1mg (women)
   - Choline: 550mg (men) / 425mg (women)
   - Calcium: 1000mg (both)
+  - Phosphorus: 700mg (both)
   - Potassium: 3400mg (men) / 2600mg (women)
   - Iodine: 150µg (both)
   - Vitamin C: 90mg (men) / 75mg (women)

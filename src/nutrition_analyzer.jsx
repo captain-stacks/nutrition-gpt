@@ -1372,7 +1372,7 @@ ${inputText.trim()}
 - serving_size must specify the quantity the per_serving values represent (e.g., "100 g", "1 cup", "1 oz", "250 ml")
 - per_serving values should match the serving_size you specify
 - The app will automatically convert units as needed (including IU to metric when necessary)
-- Include every one of these nutrients: calories, protein, fat, carbs, omega3, omega6, zinc, b12, magnesium, vitaminE, vitaminK, vitaminA, monounsaturated, selenium, iron, vitaminD, b1, choline, calcium, potassium, iodine, vitaminC, folate
+- Include every one of these nutrients: calories, protein, fat, carbs, omega3, omega6, zinc, b12, magnesium, phosphorus, vitaminE, vitaminK, vitaminA, monounsaturated, selenium, iron, vitaminD, b1, choline, calcium, potassium, iodine, vitaminC, folate
 - if the value is not known, give your best guess
 - Output only JSON, no explanations or extra text`;
     
@@ -1758,11 +1758,13 @@ Context provided: ${descriptor}
           const profiles = await fetchNutritionProfileFromOpenAI(itemsNeedingNutrition);
           const profileArray = Array.isArray(profiles) ? profiles : [profiles];
           
-          // Create a map of original item names to profiles
+          // Create a map of original item names to profiles by index (more reliable)
           const profileMap = new Map();
           profileArray.forEach((profile, index) => {
             const originalItem = itemsNeedingNutrition[index];
             if (originalItem && profile) {
+              profileMap.set(index, profile);
+              // Also add lowercase name for fallback matching
               profileMap.set(originalItem.name.toLowerCase(), profile);
             }
           });
@@ -1770,7 +1772,16 @@ Context provided: ${descriptor}
           // Update itemData with nutrition profiles
           itemData.forEach(data => {
             if (!data.nutrientProfile) {
-              const profileResult = profileMap.get(data.item.name.toLowerCase());
+              // Find the profile by looking for it in the map
+              // First, try to find by index in itemsNeedingNutrition
+              const itemIndex = itemsNeedingNutrition.findIndex(item => item.name.toLowerCase() === data.item.name.toLowerCase());
+              let profileResult = itemIndex >= 0 ? profileMap.get(itemIndex) : null;
+              
+              // Fallback to name-based lookup
+              if (!profileResult) {
+                profileResult = profileMap.get(data.item.name.toLowerCase());
+              }
+              
               if (profileResult && profileResult.nutrients) {
                 const resolvedName = titleCase(profileResult.name || data.foodName);
                 const mergedDb = { ...foodDatabase, ...dbUpdates };
@@ -1824,15 +1835,34 @@ Context provided: ${descriptor}
           // Prefer the normalized unit from the original parsed item to maintain user's intent
           let unitToUse = DEFAULT_DISPLAY_UNIT;
           
-          // First, check if servingSize volume suggests "whole" (e.g., "1 large egg", "1 apple")
+          // First, check if servingSize volume or food name suggests "whole" (e.g., "1 large egg", "1 apple")
           // This handles cases where API returns volume like "1 large egg" but we want "whole" as the unit
           let volumeSuggestsWhole = false;
+          const wholeItemPattern = /\b(egg|eggs|apple|apples|banana|bananas|orange|oranges|peach|peaches|pear|pears|plum|plums|avocado|avocados|tomato|tomatoes|cucumber|cucumbers|pepper|peppers|onion|onions|potato|potatoes|carrot|carrots|lemon|lemons|lime|limes|grapefruit|grapefruits)\b/i;
+          
           if (data.nutrientProfile?._servingSize) {
             const servingSize = data.nutrientProfile._servingSize;
             const volumeStr = servingSize.volume || "";
+            const servingSizeStr = `${servingSize.amount} ${servingSize.unit}`;
             // If volume contains patterns like "1 egg", "1 apple", "1 banana", etc., use "whole"
-            if (volumeStr && /^1\s+(large|medium|small)?\s*(egg|eggs|apple|apples|banana|bananas|orange|oranges|peach|peaches|pear|pears|plum|plums|avocado|avocados|tomato|tomatoes|cucumber|cucumbers|pepper|peppers|onion|onions|potato|potatoes|carrot|carrots)/i.test(volumeStr)) {
+            if (volumeStr && /^1\s+(large|medium|small)?\s*/i.test(volumeStr) && wholeItemPattern.test(volumeStr)) {
               volumeSuggestsWhole = true;
+            }
+            // Also check if serving size is "1" of something (e.g., "1 apple", "1 egg")
+            if (!volumeSuggestsWhole && /^1\s/i.test(servingSizeStr) && wholeItemPattern.test(data.foodName)) {
+              volumeSuggestsWhole = true;
+            }
+          }
+          
+          // Also check food name itself for common whole items
+          if (!volumeSuggestsWhole && wholeItemPattern.test(data.foodName)) {
+            // If food name is a common whole item and serving size is "1", use whole
+            if (data.nutrientProfile?._servingSize) {
+              const servingSize = data.nutrientProfile._servingSize;
+              if (servingSize.amount === 1 && servingSize.unit === "g" && servingSize.grams < 500) {
+                // Likely a whole item based on reasonable weight
+                volumeSuggestsWhole = true;
+              }
             }
           }
           
@@ -3656,20 +3686,14 @@ Context provided: ${descriptor}
           }
         }
         
-        // Calcium:Phosphorus ratio (optimal range: 1.3-1.5)
-        if (totals.calcium && totals.phosphorus && totals.phosphorus > 0) {
-          const caToPRatio = totals.calcium / totals.phosphorus;
-          if (caToPRatio < 1.3) {
+        // Phosphorus:Calcium ratio (watch for high phosphorus)
+        if (totals.calcium && totals.phosphorus && totals.calcium > 0) {
+          const pToCaRatio = totals.phosphorus / totals.calcium;
+          if (pToCaRatio > 1.5) {
             ratioWarnings.push({
-              title: 'Low Calcium Relative to Phosphorus',
-              message: 'Your calcium to phosphorus ratio is too low. This imbalance may affect bone health and calcium absorption. Consider increasing calcium-rich foods (e.g., dairy, leafy greens, fortified foods) or discussing supplements with a clinician.',
-              current: `${formatNumber(totals.calcium, 2)} mg Ca / ${formatNumber(totals.phosphorus, 2)} mg P (ratio: ${caToPRatio.toFixed(2)})`
-            });
-          } else if (caToPRatio > 1.5) {
-            ratioWarnings.push({
-              title: 'High Calcium Relative to Phosphorus',
-              message: 'Your calcium to phosphorus ratio is too high. This imbalance may affect mineral balance and bone health. Consider increasing phosphorus-rich foods (e.g., meat, fish, poultry, whole grains, nuts, seeds) or discussing your diet with a clinician.',
-              current: `${formatNumber(totals.calcium, 2)} mg Ca / ${formatNumber(totals.phosphorus, 2)} mg P (ratio: ${caToPRatio.toFixed(2)})`
+              title: 'High Phosphorus Relative to Calcium',
+              message: 'Your phosphorus to calcium ratio is too high. Excess phosphorus may interfere with calcium absorption and affect bone health. Consider reducing high-phosphorus foods (e.g., processed foods, soft drinks, meat) or increasing calcium-rich foods (e.g., dairy, leafy greens, fortified foods).',
+              current: `${formatNumber(totals.phosphorus, 2)} mg P / ${formatNumber(totals.calcium, 2)} mg Ca (ratio: ${pToCaRatio.toFixed(2)})`
             });
           }
         }
